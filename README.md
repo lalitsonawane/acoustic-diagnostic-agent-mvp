@@ -48,6 +48,10 @@ Then open `http://localhost:8501`.
 | [`docs/architecture.md`](docs/architecture.md) | System design and Mermaid workflow diagrams |
 | [`docs/engineering-student-guide.md`](docs/engineering-student-guide.md) | Learning path, signal-processing notes, exercises, and extension ideas |
 
+## Application documentation
+
+Use [`docs/application.md`](docs/application.md) as the single reference section for the application. It brings together the user workflow, code structure, signal-processing concepts, decision policy, study sequence, exercises, and production-readiness notes. The linked architecture and student-guide documents provide deeper detail.
+
 ## Validation
 
 ```bash

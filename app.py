@@ -215,3 +215,51 @@ with action_col:
         st.markdown('<div class="terminal"><div class="ok">[01:14:02] Signal received from edge sensor</div><div>[01:14:03] No abnormal ultrasonic energy detected</div><div>[01:14:04] Asset remains within operating envelope</div><div class="ok">[01:14:04] No maintenance action required</div></div>', unsafe_allow_html=True)
         st.markdown("\n")
         st.info("Autonomous workflow arms when the anomaly score exceeds 75%.")
+
+st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
+st.markdown('<div class="eyebrow">03 / APPLICATION REFERENCE</div>', unsafe_allow_html=True)
+st.subheader("Learn how the diagnostic loop works")
+st.caption("Use this section as a compact study reference while experimenting with the live dashboard.")
+with st.expander("Open application guide", expanded=False):
+    st.markdown(
+        """
+        ### Application purpose
+
+        This MVP demonstrates how an acoustic signal can become a machine-health decision. It is an educational simulation: the detector is rule-based, the RUL is illustrative, and the SAP S/4HANA work order is mock JSON rather than a real API request.
+
+        ### Signal-processing concepts
+
+        - The simulator uses a **48 kHz** sample rate, giving a **24 kHz Nyquist frequency**.
+        - A base sine wave and third harmonic approximate rotating-machine sound.
+        - White noise approximates measurement and environmental noise.
+        - The anomaly toggle adds damped **22 kHz** bursts above the 20 kHz diagnostic band.
+        - Librosa renders a Mel-spectrogram so energy can be inspected across time and frequency.
+        - The dummy detector uses the mean FFT magnitude above 20 kHz and a deterministic demo boost.
+
+        ### Study workflow
+
+        1. Run the healthy path with anomaly injection off.
+        2. Run the fault path with injection on.
+        3. Compare the score, health state, RUL, and spectrogram.
+        4. Change a machine base frequency and explain the visual difference.
+        5. Replace the demo boost with measured features and add confidence scoring.
+        6. Add human approval before any real maintenance action.
+
+        ### Engineering questions
+
+        - Why would a 16 kHz recording be unsuitable for studying a 22 kHz fault?
+        - Why does a spectrogram reveal intermittent events better than an average spectrum?
+        - What false-positive and false-negative costs exist in predictive maintenance?
+        - Which metadata should be stored with a real model decision?
+        - Why must a production SAP request be authenticated, auditable, and verified?
+
+        ### Full references
+
+        - [Central application documentation](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/application.md)
+        - [Architecture and Mermaid workflows](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/architecture.md)
+        - [Engineering student study guide](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/engineering-student-guide.md)
+        - [Source code on GitHub](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/app.py)
+
+        > Production note: never treat the demo score or mock SAP payload as a certified diagnosis or proof that a work order exists.
+        """
+    )

@@ -66,3 +66,7 @@ git diff --check
 - RUL is a simple illustrative estimate, not a survival model or maintenance forecast.
 - SAP integration is represented by JSON shown in the UI; no request is sent to SAP.
 - A real system needs calibrated sensors, labeled failure data, model evaluation, authentication, audit logs, human approval, and safe maintenance controls.
+
+## License
+
+This project is released under the [MIT License](LICENSE).

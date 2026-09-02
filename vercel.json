@@ -1,0 +1,13 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "installCommand": "",
+  "outputDirectory": "public",
+  "redirects": [
+    {
+      "source": "/(.*)",
+      "destination": "https://lalitsonawane-acoustic-diagnostic-agent-mvp-app-5t3rdo.streamlit.app/",
+      "permanent": false
+    }
+  ]
+}

@@ -37,7 +37,7 @@ Then open `http://localhost:8501`.
 3. Click **Simulate Acoustic Data**.
 4. Observe the score move above 75%, the `CRITICAL` state, and the SAP work-order payload.
 5. Turn the toggle off and simulate again to compare the healthy path.
-6. Optionally upload a mono or stereo `.wav` file. Uploaded audio is decoded with Librosa and rendered defensively with an error message if processing fails.
+6. Optionally upload a mono or stereo `.wav` file. Uploaded audio is decoded with Librosa and rendered defensively with an error message if processing fails. Ready-made labelled test files live in [`data/samples/`](data/samples/README.md).
 
 ## Project map
 
@@ -45,6 +45,8 @@ Then open `http://localhost:8501`.
 | --- | --- |
 | [`app.py`](app.py) | Single-file Streamlit application and demo logic |
 | [`requirements.txt`](requirements.txt) | Python runtime dependencies |
+| [`scripts/generate_sample_wavs.py`](scripts/generate_sample_wavs.py) | Deterministic generator for the labelled sample WAV test set |
+| [`data/samples/`](data/samples/README.md) | 15 labelled test WAVs, `manifest.csv`, and a survey of public bearing/machine-sound datasets |
 | [`docs/architecture.md`](docs/architecture.md) | System design and Mermaid workflow diagrams |
 | [`docs/engineering-student-guide.md`](docs/engineering-student-guide.md) | Learning path, signal-processing notes, exercises, and extension ideas |
 

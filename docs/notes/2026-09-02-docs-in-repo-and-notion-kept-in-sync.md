@@ -32,5 +32,5 @@ All project documentation now exists in both the git repository and the Notion P
 
 ## Open follow-ups
 
-- Commit and push the new `docs/` files and `.cursor/rules/docs-notion-sync.mdc` (currently on the working tree of `feat/professionalize-phases-0-2`).
+- ~~Commit and push the new `docs/` files and `.cursor/rules/docs-notion-sync.mdc`~~ Done: commit `a0daca6` pushed to `origin/feat/professionalize-phases-0-2`.
 - When the professionalization work adds new docs (CHANGELOG, CITATION.cff, ADRs), add them to both sides and to `docs/notion-sync.md`.

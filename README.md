@@ -49,10 +49,16 @@ Then open `http://localhost:8501`.
 | [`data/samples/`](data/samples/README.md) | 15 labelled test WAVs, `manifest.csv`, and a survey of public bearing/machine-sound datasets |
 | [`docs/architecture.md`](docs/architecture.md) | System design and Mermaid workflow diagrams |
 | [`docs/engineering-student-guide.md`](docs/engineering-student-guide.md) | Learning path, signal-processing notes, exercises, and extension ideas |
+| [`docs/notes/`](docs/notes/) | Markdown mirrors of the Notion session, decision and research notes for this project |
+| [`docs/notion-sync.md`](docs/notion-sync.md) | Index mapping every repo document to its Notion page; both are kept in sync |
 
 ## Application documentation
 
 Use [`docs/application.md`](docs/application.md) as the single reference section for the application. It brings together the user workflow, code structure, signal-processing concepts, decision policy, study sequence, exercises, and production-readiness notes. The linked architecture and student-guide documents provide deeper detail.
+
+## Documentation policy
+
+All documentation lives in both this repository and the Notion Project Knowledge Library and is kept in sync. See [`docs/notion-sync.md`](docs/notion-sync.md) for the mapping and the sync procedure.
 
 ## Validation
 

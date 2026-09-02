@@ -1,0 +1,16 @@
+file,machine_profile,condition,fault_type,sample_rate_hz,channels,seed,burst_amplitude,noise_std,purpose,duration_s,gain,extra,size_bytes
+robotic_arm_healthy_48k.wav,robotic_arm,healthy,none,48000,1,1001,0.0,0.018,Baseline healthy signal; expected HEALTHY / low score.,2.0,1.0,,192044
+robotic_arm_fault_48k.wav,robotic_arm,fault,ultrasonic_bursts,48000,1,1002,0.42,0.018,"Injected 22 kHz micro-crack bursts, same parameters as the in-app toggle.",2.0,1.0,,192044
+stamping_press_healthy_48k.wav,stamping_press,healthy,none,48000,1,1003,0.0,0.018,Baseline healthy signal; expected HEALTHY / low score.,2.0,1.0,,192044
+stamping_press_fault_48k.wav,stamping_press,fault,ultrasonic_bursts,48000,1,1004,0.42,0.018,"Injected 22 kHz micro-crack bursts, same parameters as the in-app toggle.",2.0,1.0,,192044
+conveyor_drive_healthy_48k.wav,conveyor_drive,healthy,none,48000,1,1005,0.0,0.018,Baseline healthy signal; expected HEALTHY / low score.,2.0,1.0,,192044
+conveyor_drive_fault_48k.wav,conveyor_drive,fault,ultrasonic_bursts,48000,1,1006,0.42,0.018,"Injected 22 kHz micro-crack bursts, same parameters as the in-app toggle.",2.0,1.0,,192044
+robotic_arm_fault_weak_48k.wav,robotic_arm,fault,ultrasonic_bursts,48000,1,2001,0.1,0.018,Weak bursts near the detection floor; useful for threshold and ROC studies.,2.0,1.0,,192044
+robotic_arm_fault_noisy_48k.wav,robotic_arm,fault,ultrasonic_bursts,48000,1,2002,0.42,0.12,Full-strength bursts under heavy broadband noise (low SNR).,2.0,1.0,,192044
+robotic_arm_healthy_noisy_48k.wav,robotic_arm,healthy,none,48000,1,2003,0.0,0.12,Healthy but noisy; a naive high-band energy detector will false-alarm on this.,2.0,1.0,,192044
+robotic_arm_fault_stereo_48k.wav,robotic_arm,fault,ultrasonic_bursts,48000,2,2004,0.42,0.018,Stereo file; verifies mono down-mix on upload.,2.0,1.0,,384044
+robotic_arm_fault_clipped_48k.wav,robotic_arm,edge_case,ultrasonic_bursts,48000,1,2005,0.42,0.018,Heavily clipped input; a validity check should flag this and lower confidence.,2.0,6.0,,192044
+robotic_arm_fault_16k.wav,robotic_arm,edge_case,ultrasonic_bursts,16000,1,2006,0.42,0.018,"16 kHz sample rate: Nyquist is 8 kHz, so the 22 kHz fault aliases and the >20 kHz band is empty. The app must warn instead of reporting a confident score.",2.0,1.0,,64044
+silence_48k.wav,none,edge_case,silence,48000,1,2007,0.0,0.0005,Near-silent capture (sensor disconnected); should be rejected as invalid input.,2.0,1.0,,192044
+bearing_outer_race_healthy_48k.wav,robotic_arm,healthy,none,48000,1,3001,0.0,0.03,Healthy counterpart for the bearing-impact file (same noise level).,2.0,1.0,,192044
+bearing_outer_race_fault_48k.wav,robotic_arm,fault,bearing_outer_race_impacts,48000,1,3002,0.35,0.03,Physically motivated outer-race defect: impacts at BPFO (~107 Hz) ringing a 5.2 kHz resonance. Invisible to a >20 kHz detector; visible to envelope/kurtosis analysis.,2.0,1.0,shaft_hz=29.95;bpfo_hz=107.37;resonance_hz=5200.0,192044

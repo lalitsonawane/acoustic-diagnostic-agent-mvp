@@ -1,0 +1,41 @@
+# Streamlit theme: dark industrial palette previously injected via ~30 lines of CSS.
+# Colours are also mirrored in acoustic_agent.plots.PlotTheme for matplotlib output.
+
+[theme]
+base = "dark"
+primaryColor = "#4fd1b9"
+backgroundColor = "#0f1719"
+secondaryBackgroundColor = "#141f22"
+codeBackgroundColor = "#0b1214"
+textColor = "#e6eef0"
+linkColor = "#4fd1b9"
+borderColor = "#27383c"
+showWidgetBorder = true
+showSidebarBorder = true
+baseRadius = "4px"
+buttonRadius = "4px"
+font = "'Space Grotesk':https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap"
+codeFont = "'DM Mono':https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&display=swap"
+codeFontSize = "13px"
+baseFontSize = 15
+headingFontWeights = [600, 600, 500, 500, 500, 500]
+chartCategoricalColors = ["#4fd1b9", "#ffb454", "#ff6b6b", "#8aa0a4", "#7aa2f7", "#c678dd"]
+
+# Semantic colours used by st.badge / st.success / st.warning / st.error
+greenColor = "#4fd1b9"
+orangeColor = "#ffb454"
+redColor = "#ff6b6b"
+grayColor = "#8aa0a4"
+blueColor = "#7aa2f7"
+
+[theme.sidebar]
+backgroundColor = "#0b1517"
+secondaryBackgroundColor = "#141f22"
+borderColor = "#27383c"
+
+[server]
+maxUploadSize = 50
+headless = true
+
+[browser]
+gatherUsageStats = false

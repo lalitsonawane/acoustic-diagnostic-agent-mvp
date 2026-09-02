@@ -1,0 +1,95 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "acoustic-diagnostic-agent"
+version = "0.2.0"
+description = "Acoustic condition-monitoring MVP: baseline-calibrated anomaly detection with a Streamlit front-end and headless CLI"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.12"
+authors = [{ name = "Lalit Sonawane" }]
+keywords = ["acoustic", "condition-monitoring", "predictive-maintenance", "streamlit", "signal-processing"]
+classifiers = [
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+  "License :: OSI Approved :: MIT License",
+  "Topic :: Scientific/Engineering",
+]
+dependencies = [
+  "streamlit>=1.50",
+  "numpy>=2.0",
+  "scipy>=1.13",
+  "soundfile>=0.12",
+  "matplotlib>=3.8",
+  "pandas>=2.2",
+  "altair>=5.0",
+  "pyyaml>=6.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-cov>=5",
+  "ruff>=0.6",
+  "mypy>=1.10",
+  "pre-commit>=3.7",
+  "types-PyYAML",
+  "pandas-stubs",
+  "scipy-stubs",
+]
+
+[project.scripts]
+acoustic-agent = "acoustic_agent.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp"
+Demo = "https://lalitsonawane-acoustic-diagnostic-agent-mvp-app-5t3rdo.streamlit.app/"
+
+[tool.setuptools]
+packages = ["acoustic_agent"]
+
+[tool.ruff]
+line-length = 140
+target-version = "py312"
+extend-exclude = [".venv", "data", "public"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "N", "RUF"]
+ignore = [
+  "E501",   # long lines are allowed where they aid readability (line-length still enforced by formatter)
+  "RUF012", # mutable class attributes are fine for our dataclass defaults
+  "B008",   # PlotTheme() default arguments are immutable frozen dataclasses
+  "RUF001", # typographic characters (σ, ×, –) are intentional in UI copy
+  "RUF002",
+  "RUF003",
+  "SIM108", # explicit if/else is often clearer than a long ternary
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S101"]
+
+[tool.ruff.format]
+quote-style = "double"
+
+[tool.mypy]
+python_version = "3.12"
+files = ["acoustic_agent", "app.py", "scripts"]
+strict = true
+warn_unreachable = true
+ignore_missing_imports = true
+disallow_untyped_decorators = false
+
+[[tool.mypy.overrides]]
+module = ["soundfile", "matplotlib.*", "streamlit.*", "altair.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q --strict-markers"
+filterwarnings = ["ignore::DeprecationWarning"]
+
+[tool.coverage.run]
+source = ["acoustic_agent"]

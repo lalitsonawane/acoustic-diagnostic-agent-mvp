@@ -1,0 +1,24 @@
+cff-version: 1.2.0
+message: "If you use this software in teaching or research, please cite it as below."
+type: software
+title: "Acoustic Diagnostic Agent: baseline-calibrated acoustic anomaly detection MVP"
+version: 0.2.0
+date-released: 2026-09-02
+license: MIT
+repository-code: "https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp"
+url: "https://lalitsonawane-acoustic-diagnostic-agent-mvp-app-5t3rdo.streamlit.app/"
+authors:
+  - family-names: Sonawane
+    given-names: Lalit
+keywords:
+  - acoustic condition monitoring
+  - predictive maintenance
+  - envelope analysis
+  - Streamlit
+abstract: >
+  An educational, reproducible Streamlit application and command-line tool that turns
+  acoustic recordings into a machine-health decision. Features (Welch band contrast,
+  residual kurtosis and crest factor, envelope-spectrum prominence) are scored against a
+  healthy baseline, gated by input-validity checks, and mapped to a maintenance
+  recommendation with a mock SAP S/4HANA PM work order. Includes a deterministic labelled
+  synthetic test set, batch ROC/PR evaluation and parameter sweeps.

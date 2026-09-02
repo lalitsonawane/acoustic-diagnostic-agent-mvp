@@ -1,265 +1,881 @@
-"""Autonomous Acoustic Diagnostic Agent - Streamlit MVP."""
+"""Acoustic Diagnostic Agent - Streamlit front-end.
+
+All signal processing lives in the ``acoustic_agent`` package; this file only wires
+widgets to :func:`acoustic_agent.pipeline.analyze` and renders results.
+"""
 
 from __future__ import annotations
 
-from datetime import datetime, timedelta
-from typing import Any
+import json
+from dataclasses import fields
+from datetime import UTC, datetime
+from typing import Any, Literal
 
-import librosa
-import librosa.display
-import matplotlib.pyplot as plt
+import altair as alt
 import numpy as np
+import pandas as pd
 import streamlit as st
 
+from acoustic_agent import FEATURE_VERSION, __version__
+from acoustic_agent.config import (
+    MACHINE_PROFILES,
+    PROFILE_BY_KEY,
+    ExperimentConfig,
+    config_hash,
+    sweepable_parameters,
+)
+from acoustic_agent.decision import STATE_COLORS, STATE_ICONS, work_order_payload
+from acoustic_agent.detect import CHANNELS, Baseline, calibrate_baseline
+from acoustic_agent.features import extract_features
+from acoustic_agent.io import (
+    AudioLoadError,
+    SampleEntry,
+    audio_to_wav_bytes,
+    labels_from_manifest_text,
+    load_audio,
+    load_sample_manifest,
+    result_npz_bytes,
+    rows_to_csv,
+)
+from acoustic_agent.pipeline import AnalysisResult, BatchResult, analyze, run_batch, sweep
+from acoustic_agent.plots import (
+    PlotTheme,
+    channel_contributions_png,
+    envelope_spectrum_png,
+    psd_overlay_png,
+    spectrogram_png,
+    waveform_png,
+)
+from acoustic_agent.synth import Signal, healthy_reference, synthesize
 
 st.set_page_config(
     page_title="Acoustic Diagnostic Agent",
-    page_icon="◌",
+    page_icon=":material/graphic_eq:",
     layout="wide",
     initial_sidebar_state="expanded",
 )
 
+# ----------------------------------------------------------------------------------
+# Constants and small helpers
+# ----------------------------------------------------------------------------------
 
-MACHINE_PROFILES: dict[str, dict[str, Any]] = {
-    "Robotic Arm Bearings": {
-        "part": "RB-6204-2RS",
-        "base_frequency": 440.0,
-        "rul": 86,
-        "accent": "Bearing race / micro-crack",
-    },
-    "Stamping Press": {
-        "part": "SP-ROLLER-18",
-        "base_frequency": 220.0,
-        "rul": 142,
-        "accent": "Drive train resonance",
-    },
-    "Conveyor Drive": {
-        "part": "CV-MOTOR-07",
-        "base_frequency": 330.0,
-        "rul": 119,
-        "accent": "Motor / gearbox harmonic",
-    },
-}
+SIDEBAR_FIELDS = (
+    "profile",
+    "inject_bursts",
+    "inject_bearing_impacts",
+    "seed",
+    "noise_std",
+    "burst_amplitude",
+    "warn_threshold",
+    "critical_threshold",
+    "demo_boost",
+)
+DEMO_BOOST_POINTS = 60.0
 
 
-def inject_styles() -> None:
-    st.markdown(
-        """
-        <style>
-        @import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Space+Grotesk:wght@400;500;600;700&display=swap');
-        :root { --ink:#e8f0f2; --muted:#829397; --line:#253538; --panel:#10191b; --cyan:#62f4d6; --amber:#ffbd68; }
-        .stApp { background:#081012; color:var(--ink); font-family:'Space Grotesk', sans-serif; }
-        [data-testid="stSidebar"] { background:#0b1517; border-right:1px solid var(--line); }
-        [data-testid="stSidebar"] > div:first-child { padding-top:2.2rem; }
-        h1,h2,h3,p,span,label { font-family:'Space Grotesk',sans-serif; }
-        h1 { font-size:clamp(2rem, 4vw, 4rem)!important; letter-spacing:-.06em; line-height:.95!important; margin-bottom:.8rem!important; }
-        h2 { letter-spacing:-.04em; }
-        .eyebrow { color:var(--cyan); font:500 .72rem 'DM Mono', monospace; letter-spacing:.16em; text-transform:uppercase; }
-        .subtle { color:var(--muted); font-size:.92rem; }
-        .metric { border-top:1px solid var(--line); padding:1rem 0 1.2rem; }
-        .metric-label { color:var(--muted); font:500 .68rem 'DM Mono', monospace; letter-spacing:.11em; text-transform:uppercase; }
-        .metric-value { color:var(--ink); font-size:2rem; font-weight:600; letter-spacing:-.05em; margin-top:.25rem; }
-        .metric-value.cyan { color:var(--cyan); }
-        .metric-value.amber { color:var(--amber); }
-        .signal-line { height:1px; background:linear-gradient(90deg, var(--cyan), transparent); margin:1.4rem 0 2rem; opacity:.7; }
-        .section-rule { border-top:1px solid var(--line); padding-top:1rem; margin-top:2rem; }
-        .terminal { background:#071011; border:1px solid var(--line); padding:1rem 1.1rem; min-height:190px; font:400 .78rem/1.8 'DM Mono',monospace; color:#a8babc; }
-        .terminal .ok { color:var(--cyan); } .terminal .warn { color:var(--amber); }
-        .sap-json { background:#0c1719; border-left:2px solid var(--cyan); padding:1rem; }
-        .tag { display:inline-block; padding:.25rem .55rem; border:1px solid var(--line); color:var(--muted); font:500 .65rem 'DM Mono',monospace; text-transform:uppercase; letter-spacing:.08em; }
-        div.stButton > button { border:1px solid var(--cyan); background:var(--cyan); color:#071011; border-radius:2px; font-weight:700; min-height:2.7rem; }
-        div.stButton > button:hover { background:#a0ffe9; border-color:#a0ffe9; color:#071011; }
-        .stProgress > div > div > div > div { background:var(--cyan); }
-        [data-testid="stFileUploader"] { border:1px dashed var(--line); padding:.25rem; }
-        </style>
-        """,
-        unsafe_allow_html=True,
+def plot_theme() -> PlotTheme:
+    try:
+        return PlotTheme() if st.context.theme.type == "dark" else PlotTheme.light()
+    except Exception:  # pragma: no cover - theme unavailable in some test contexts
+        return PlotTheme()
+
+
+@st.cache_data(show_spinner=False, max_entries=32, ttl=3600)
+def cached_baseline(config_json: str) -> Baseline:
+    return calibrate_baseline(ExperimentConfig.from_text(config_json))
+
+
+@st.cache_data(show_spinner=False, max_entries=64, ttl=3600)
+def cached_analysis(audio: np.ndarray, sample_rate_hz: int, source: str, config_json: str, baseline_json: str) -> AnalysisResult:
+    cfg = ExperimentConfig.from_text(config_json)
+    baseline = Baseline.from_dict(json.loads(baseline_json))
+    return analyze(Signal(audio=audio, sample_rate_hz=sample_rate_hz, source=source), cfg, baseline)
+
+
+@st.cache_data(show_spinner=False, max_entries=64, ttl=3600)
+def cached_plot(kind: str, audio: np.ndarray, sample_rate_hz: int, source: str, config_json: str, dark: bool) -> bytes:
+    cfg = ExperimentConfig.from_text(config_json)
+    sig = Signal(audio=audio, sample_rate_hz=sample_rate_hz, source=source)
+    theme = PlotTheme() if dark else PlotTheme.light()
+    if kind == "spectrogram":
+        return spectrogram_png(sig, cfg, theme)
+    if kind == "psd":
+        ref = healthy_reference(cfg.with_updates(sample_rate_hz=sig.sample_rate_hz), seed=10_000)
+        return psd_overlay_png(sig, cfg, ref, theme)
+    if kind == "envelope":
+        expected = cfg.shaft_hz * cfg.bpfo_ratio if cfg.inject_bearing_impacts else None
+        return envelope_spectrum_png(sig, cfg, theme, expected_hz=expected)
+    if kind == "waveform":
+        return waveform_png(sig, cfg, theme)
+    raise ValueError(kind)
+
+
+@st.cache_data(show_spinner=False)
+def cached_manifest() -> list[SampleEntry]:
+    return load_sample_manifest()
+
+
+@st.cache_data(show_spinner=False, max_entries=64)
+def cached_sample(path: str) -> Signal:
+    return load_audio(path)
+
+
+def init_state() -> None:
+    """``cfg`` is the single source of truth; sidebar widgets mirror it via callbacks.
+
+    Widget keys are removed by Streamlit when a widget is not rendered (for example when
+    the source mode hides it), so values are never read from widget keys directly.
+    """
+    if "cfg" not in st.session_state:
+        st.session_state.cfg = ExperimentConfig().to_dict()
+    st.session_state.setdefault("signal", None)
+    st.session_state.setdefault("run_log", [])
+    st.session_state.setdefault("custom_baseline_feats", [])
+    st.session_state.setdefault("custom_baseline", None)
+    st.session_state.setdefault("approvals", [])
+    st.session_state.setdefault("last_logged_key", None)
+    st.session_state.setdefault("source_mode", "Simulate")
+
+
+def _to_widget(name: str, value: Any) -> Any:
+    return bool(value > 0) if name == "demo_boost" else value
+
+
+def _from_widget(name: str, value: Any) -> Any:
+    return (DEMO_BOOST_POINTS if value else 0.0) if name == "demo_boost" else value
+
+
+def sync_widget(name: str) -> None:
+    st.session_state.cfg[name] = _from_widget(name, st.session_state[f"w_{name}"])
+
+
+def seed_widget(name: str) -> str:
+    """Ensure the widget key exists (seeded from ``cfg``) and return it."""
+    key = f"w_{name}"
+    if key not in st.session_state:
+        st.session_state[key] = _to_widget(name, st.session_state.cfg[name])
+    return key
+
+
+def current_config() -> ExperimentConfig:
+    return ExperimentConfig.from_dict(dict(st.session_state.cfg))
+
+
+def apply_imported_config(text: str) -> None:
+    cfg = ExperimentConfig.from_text(text)
+    st.session_state.cfg = cfg.to_dict()
+    for name in SIDEBAR_FIELDS:
+        key = f"w_{name}"
+        if key in st.session_state:
+            st.session_state[key] = _to_widget(name, getattr(cfg, name))
+
+
+def on_config_upload() -> None:
+    file = st.session_state.get("config_upload")
+    if file is None:
+        return
+    try:
+        apply_imported_config(file.getvalue().decode("utf-8"))
+        st.session_state.config_import_msg = ("success", f"Imported configuration from {file.name}.")
+    except (ValueError, UnicodeDecodeError) as exc:
+        st.session_state.config_import_msg = ("error", f"Could not import configuration: {exc}")
+
+
+def on_reset_config() -> None:
+    apply_imported_config(ExperimentConfig().to_json())
+    st.session_state.custom_baseline = None
+    st.session_state.custom_baseline_feats = []
+
+
+def profile_for_sample(entry: SampleEntry, fallback: str) -> str:
+    profile = PROFILE_BY_KEY.get(entry.machine_profile)
+    return profile.name if profile else fallback
+
+
+def state_badge(state: str, confidence: float) -> None:
+    color = STATE_COLORS.get(state, "gray")
+    st.badge(state, icon=STATE_ICONS.get(state), color=color)  # type: ignore[arg-type]
+    conf_color: Literal["green", "orange", "red"] = "green" if confidence >= 0.8 else "orange" if confidence >= 0.6 else "red"
+    st.badge(
+        f"confidence {confidence:.0%}",
+        icon=":material/verified:",
+        color=conf_color,
+        help="Heuristic input-quality factor, not a probability. Reduced by clipping, low sample rate or short captures.",
     )
 
 
-def generate_acoustic_data(profile: dict[str, Any], inject_anomaly: bool, duration: float = 2.0) -> tuple[np.ndarray, int]:
-    """Generate a 48 kHz signal so injected content can exist above 20 kHz."""
-    sample_rate = 48_000
-    time = np.linspace(0, duration, int(sample_rate * duration), endpoint=False)
-    rng = np.random.default_rng(42)
-    carrier = 0.20 * np.sin(2 * np.pi * profile["base_frequency"] * time)
-    harmonic = 0.08 * np.sin(2 * np.pi * profile["base_frequency"] * 3 * time)
-    signal = carrier + harmonic + rng.normal(0, 0.018, time.shape)
-    if inject_anomaly:
-        # Short ultrasonic bursts simulate impulsive energy from a damaged race.
-        for start in np.arange(0.25, duration, 0.37):
-            index = int(start * sample_rate)
-            burst_time = np.arange(min(int(.012 * sample_rate), len(signal) - index)) / sample_rate
-            envelope = np.exp(-burst_time * 260)
-            signal[index : index + len(burst_time)] += 0.42 * envelope * np.sin(2 * np.pi * 22_000 * burst_time)
-    return np.clip(signal, -1, 1).astype(np.float32), sample_rate
+def log_run(result: AnalysisResult) -> None:
+    key = (result.signal.source, config_hash(result.config), result.baseline.source)
+    if st.session_state.last_logged_key == key:
+        return
+    st.session_state.run_log.append(result.summary_row({"baseline": result.baseline.source}))
+    st.session_state.last_logged_key = key
 
 
-def calculate_anomaly(audio_data: np.ndarray, sample_rate: int, injected: bool = False) -> float:
-    """Dummy detector: score high-frequency energy plus a deterministic demo boost."""
-    if audio_data.size == 0:
-        return 0.0
-    spectrum = np.abs(np.fft.rfft(audio_data))
-    frequencies = np.fft.rfftfreq(audio_data.size, 1 / sample_rate)
-    high_band = spectrum[frequencies > 20_000].mean() if np.any(frequencies > 20_000) else 0.0
-    score = 7.0 + min(float(high_band) * 5.0, 22.0)
-    if injected:
-        score += 76.0
-    return float(np.clip(score, 0, 100))
+# ----------------------------------------------------------------------------------
+# Sidebar: Source -> Configure -> Analyse
+# ----------------------------------------------------------------------------------
 
-
-def health_for(score: float) -> tuple[str, str]:
-    if score > 75:
-        return "CRITICAL", "amber"
-    if score > 40:
-        return "WARNING", "amber"
-    return "HEALTHY", "cyan"
-
-
-def render_spectrogram(audio: np.ndarray, sample_rate: int) -> None:
-    try:
-        mel = librosa.feature.melspectrogram(y=audio, sr=sample_rate, n_mels=96, fmax=sample_rate // 2)
-        db = librosa.power_to_db(mel, ref=np.max)
-        fig, ax = plt.subplots(figsize=(12, 4.4), facecolor="#10191b")
-        ax.set_facecolor("#10191b")
-        image = librosa.display.specshow(db, sr=sample_rate, x_axis="time", y_axis="mel", fmax=sample_rate // 2, cmap="magma", ax=ax)
-        ax.set_title("MEL-SPECTROGRAM / 0—24 KHZ", color="#e8f0f2", loc="left", fontsize=10, pad=12, fontfamily="DejaVu Sans")
-        ax.tick_params(colors="#829397", labelsize=8)
-        for spine in ax.spines.values(): spine.set_color("#253538")
-        fig.colorbar(image, ax=ax, pad=.012, fraction=.02).ax.tick_params(colors="#829397", labelsize=7)
-        fig.tight_layout()
-        st.pyplot(fig, use_container_width=True)
-        plt.close(fig)
-    except Exception as exc:  # pragma: no cover - defensive UI boundary
-        st.error(f"Unable to render acoustic visualization: {exc}")
-
-
-def sap_payload(profile: dict[str, Any], score: float) -> dict[str, str]:
-    return {
-        "ticket_id": f"WO-{datetime.now():%Y%m%d}-0842",
-        "material_part_number": profile["part"],
-        "suggested_window": (datetime.now() + timedelta(days=2)).strftime("%Y-%m-%d 22:00–23:30 IST"),
-        "priority": "P1 - Immediate maintenance",
-        "anomaly_score": f"{score:.1f}%",
-        "system": "SAP S/4HANA PM",
-    }
-
-
-inject_styles()
+init_state()
+manifest = cached_manifest()
 
 with st.sidebar:
-    st.markdown('<div class="eyebrow">ACOUSTIC / OPS 01</div>', unsafe_allow_html=True)
-    st.markdown("### Diagnostic scope")
-    machine = st.selectbox("Machine", list(MACHINE_PROFILES), label_visibility="collapsed")
-    profile = MACHINE_PROFILES[machine]
-    st.markdown(f'<span class="tag">{profile["accent"]}</span>', unsafe_allow_html=True)
-    st.markdown("\n")
-    inject_anomaly = st.toggle("Inject Micro-Crack Anomaly", value=False, help="Adds ultrasonic impulses above 20 kHz.")
-    uploaded = st.file_uploader("Upload acoustic sample", type=["wav"])
-    simulate = st.button("Simulate Acoustic Data", use_container_width=True)
-    st.markdown('<div class="subtle" style="margin-top:2rem">Demo environment · sensor stream nominal</div>', unsafe_allow_html=True)
+    st.header("Acoustic diagnostic agent")
+    st.caption(f"v{__version__} · {FEATURE_VERSION}")
 
-if "audio" not in st.session_state:
-    st.session_state.audio, st.session_state.sample_rate = generate_acoustic_data(profile, False)
-if simulate:
-    st.session_state.audio, st.session_state.sample_rate = generate_acoustic_data(profile, inject_anomaly)
-if uploaded is not None:
-    try:
-        st.session_state.audio, st.session_state.sample_rate = librosa.load(uploaded, sr=None, mono=True)
-        st.toast("WAV sample loaded", icon="✓")
-    except Exception as exc:
-        st.error(f"Could not process this WAV file: {exc}")
+    st.subheader("1 · Source", divider="gray")
+    mode = st.segmented_control(
+        "Signal source",
+        ["Simulate", "Upload", "Sample library"],
+        default=st.session_state.source_mode,
+        label_visibility="collapsed",
+        width="stretch",
+    )
+    if mode:
+        st.session_state.source_mode = mode
+    mode = st.session_state.source_mode
 
-audio = st.session_state.audio
-sample_rate = st.session_state.sample_rate
-score = calculate_anomaly(audio, sample_rate, inject_anomaly and uploaded is None)
-health, health_color = health_for(score)
-rul = max(3, int(profile["rul"] * (1 - score / 125)))
-
-st.markdown('<div class="eyebrow">LIVE CONDITION MONITORING · SAP CONNECTED</div>', unsafe_allow_html=True)
-st.title("Autonomous Acoustic\nDiagnostic Agent")
-st.markdown('<div class="subtle">Listen for what the machine cannot report. High-frequency vibration patterns are converted into a maintenance decision.</div>', unsafe_allow_html=True)
-st.markdown('<div class="signal-line"></div>', unsafe_allow_html=True)
-
-metric_cols = st.columns(3)
-metrics = [("Machine health status", health, health_color), ("Anomaly score", f"{score:.1f}%", "amber" if score > 40 else "cyan"), ("Estimated RUL", f"{rul} days", "cyan")]
-for col, (label, value, color) in zip(metric_cols, metrics):
-    with col:
-        st.markdown(f'<div class="metric"><div class="metric-label">{label}</div><div class="metric-value {color}">{value}</div></div>', unsafe_allow_html=True)
-
-st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
-viz_col, action_col = st.columns([1.55, 1], gap="large")
-with viz_col:
-    st.markdown('<div class="eyebrow">01 / SIGNAL ANALYSIS</div>', unsafe_allow_html=True)
-    st.subheader("Acoustic fingerprint")
-    st.caption(f"{machine} · {sample_rate / 1000:.1f} kHz sample rate · {len(audio) / sample_rate:.2f}s capture")
-    render_spectrogram(audio, sample_rate)
-with action_col:
-    st.markdown('<div class="eyebrow">02 / AGENTIC RESPONSE</div>', unsafe_allow_html=True)
-    st.subheader("Maintenance decision")
-    if score > 75:
-        logs = [
-            ("ok", "[01:14:02] Signal received from edge sensor"),
-            ("ok", "[01:14:03] Ultrasonic band isolated: 20—24 kHz"),
-            ("warn", f"[01:14:03] Micro-crack signature confirmed · {score:.1f}%"),
-            ("ok", "[01:14:04] Risk threshold exceeded (>75%)"),
-            ("ok", "[01:14:04] Creating SAP S/4HANA maintenance request..."),
-            ("ok", "[01:14:05] Work order queued for planner approval"),
-        ]
-        terminal = "\n".join(f'<div class="{tone}">{line}</div>' for tone, line in logs)
-        st.markdown(f'<div class="terminal">{terminal}</div>', unsafe_allow_html=True)
-        st.markdown("\n")
-        st.markdown("**SAP S/4HANA work order**")
-        st.json(sap_payload(profile, score), expanded=True)
+    if mode == "Simulate":
+        st.selectbox(
+            "Machine profile",
+            list(MACHINE_PROFILES),
+            key=seed_widget("profile"),
+            on_change=sync_widget,
+            args=("profile",),
+            help="Sets the tonal signature and the healthy baseline.",
+        )
+        st.toggle(
+            "Inject 22 kHz micro-crack bursts",
+            key=seed_widget("inject_bursts"),
+            on_change=sync_widget,
+            args=("inject_bursts",),
+            help="Adds short damped ultrasonic bursts to the synthetic signal. This is a physical change to the waveform, not a score override.",
+        )
+        st.toggle(
+            "Inject bearing outer-race impacts",
+            key=seed_widget("inject_bearing_impacts"),
+            on_change=sync_widget,
+            args=("inject_bearing_impacts",),
+            help="Adds periodic impacts at BPFO that ring a 5.2 kHz resonance - invisible above 20 kHz, visible in the envelope spectrum.",
+        )
+        st.number_input(
+            "Seed",
+            min_value=0,
+            max_value=1_000_000,
+            step=1,
+            key=seed_widget("seed"),
+            on_change=sync_widget,
+            args=("seed",),
+            help="Change to draw a different noise realisation.",
+        )
+        if st.button("Generate signal", key="generate", type="primary", icon=":material/play_arrow:", width="stretch"):
+            st.session_state.signal = synthesize(current_config())
+            st.toast("Synthetic signal generated", icon=":material/check:")
+    elif mode == "Upload":
+        st.selectbox(
+            "Machine profile (for baseline)", list(MACHINE_PROFILES), key=seed_widget("profile"), on_change=sync_widget, args=("profile",)
+        )
+        upload = st.file_uploader(
+            "Acoustic recording", type=["wav", "flac", "ogg"], help="Mono or multi-channel; channels are averaged. Max 50 MB / 120 s."
+        )
+        if upload is not None:
+            try:
+                st.session_state.signal = load_audio(upload.getvalue(), name=upload.name)
+            except AudioLoadError as exc:
+                st.error(str(exc))
     else:
-        st.markdown('<div class="terminal"><div class="ok">[01:14:02] Signal received from edge sensor</div><div>[01:14:03] No abnormal ultrasonic energy detected</div><div>[01:14:04] Asset remains within operating envelope</div><div class="ok">[01:14:04] No maintenance action required</div></div>', unsafe_allow_html=True)
-        st.markdown("\n")
-        st.info("Autonomous workflow arms when the anomaly score exceeds 75%.")
+        if manifest:
+            labels = {e.file: f"{e.file}  ·  {e.condition}" for e in manifest}
+            choice = st.selectbox("Sample", [e.file for e in manifest], key="sample_choice", format_func=labels.__getitem__)
+            entry = next(e for e in manifest if e.file == choice)
+            st.caption(entry.purpose)
+            if st.button("Load sample", key="load_sample", type="primary", icon=":material/library_music:", width="stretch"):
+                try:
+                    st.session_state.signal = cached_sample(str(entry.path))
+                    st.session_state.cfg["profile"] = profile_for_sample(entry, st.session_state.cfg["profile"])
+                    st.rerun()
+                except (AudioLoadError, OSError) as exc:
+                    st.error(str(exc))
+        else:
+            st.info("No sample library found at data/samples.")
 
-st.markdown('<div class="section-rule"></div>', unsafe_allow_html=True)
-st.markdown('<div class="eyebrow">03 / APPLICATION REFERENCE</div>', unsafe_allow_html=True)
-st.subheader("Learn how the diagnostic loop works")
-st.caption("Use this section as a compact study reference while experimenting with the live dashboard.")
-with st.expander("Open application guide", expanded=False):
+    st.subheader("2 · Configure", divider="gray")
+    st.slider(
+        "Noise level (std)",
+        0.0,
+        0.2,
+        step=0.002,
+        key=seed_widget("noise_std"),
+        on_change=sync_widget,
+        args=("noise_std",),
+        format="%.3f",
+        help="Broadband measurement noise in the synthetic model and its healthy baseline.",
+    )
+    st.slider(
+        "Burst amplitude",
+        0.0,
+        1.0,
+        step=0.01,
+        key=seed_widget("burst_amplitude"),
+        on_change=sync_widget,
+        args=("burst_amplitude",),
+        help="Strength of injected micro-crack bursts (synthetic only).",
+    )
+    st.slider(
+        "Warning threshold (%)", 0.0, 99.0, step=1.0, key=seed_widget("warn_threshold"), on_change=sync_widget, args=("warn_threshold",)
+    )
+    st.slider(
+        "Critical threshold (%)",
+        1.0,
+        100.0,
+        step=1.0,
+        key=seed_widget("critical_threshold"),
+        on_change=sync_widget,
+        args=("critical_threshold",),
+    )
+    st.toggle(
+        f"Teaching demo boost (+{DEMO_BOOST_POINTS:.0f} points, not a measurement)",
+        key=seed_widget("demo_boost"),
+        on_change=sync_widget,
+        args=("demo_boost",),
+        help="Forces the critical path for classroom demonstrations. Flagged in every result and payload.",
+    )
+    with st.expander("Import / export configuration"):
+        st.file_uploader("Import YAML or JSON", type=["yaml", "yml", "json"], key="config_upload", on_change=on_config_upload)
+        msg = st.session_state.pop("config_import_msg", None)
+        if msg:
+            (st.success if msg[0] == "success" else st.error)(msg[1])
+        cfg_preview = current_config()
+        c1, c2 = st.columns(2)
+        c1.download_button("YAML", cfg_preview.to_yaml(), file_name="experiment.yaml", mime="text/yaml", width="stretch")
+        c2.download_button("JSON", cfg_preview.to_json(), file_name="experiment.json", mime="application/json", width="stretch")
+        st.button("Reset to defaults", on_click=on_reset_config, width="stretch")
+
+    st.subheader("3 · Analyse", divider="gray")
+
+# ----------------------------------------------------------------------------------
+# Analysis (runs on every interaction, cached)
+# ----------------------------------------------------------------------------------
+
+try:
+    config = current_config()
+except ValueError as exc:
+    st.sidebar.error(f"Configuration invalid: {exc}")
+    st.stop()
+
+if st.session_state.signal is None:
+    st.session_state.signal = synthesize(config)
+    st.session_state.first_run = True
+
+signal: Signal = st.session_state.signal
+config_json = config.to_json()
+baseline: Baseline = st.session_state.custom_baseline or cached_baseline(config_json)
+result = cached_analysis(signal.audio, signal.sample_rate_hz, signal.source, config_json, json.dumps(baseline.to_dict()))
+log_run(result)
+is_dark = plot_theme().background == PlotTheme().background
+
+with st.sidebar:
+    st.caption(
+        f"Analysed {result.analysed_at.astimezone().strftime('%H:%M:%S')} · config `{config_hash(config)}` · baseline {baseline.n} refs"
+    )
+    st.caption(f"Source: {signal.source}")
+
+# ----------------------------------------------------------------------------------
+# Main layout
+# ----------------------------------------------------------------------------------
+
+st.title("Acoustic diagnostic agent")
+st.caption(
+    "High-frequency acoustic evidence is compared against a healthy baseline and turned into a "
+    "maintenance decision. Educational MVP: nothing is sent to SAP."
+)
+
+if st.session_state.pop("first_run", False):
+    st.info(
+        "A healthy synthetic signal was generated to start. Try **Sample library** in the sidebar to load "
+        "labelled test recordings, or toggle a fault injection and press **Generate signal**.",
+        icon=":material/lightbulb:",
+    )
+
+tab_monitor, tab_experiment, tab_batch, tab_methods = st.tabs(["Monitor", "Experiment", "Batch", "Methods"])
+
+# ---------------------------------------------------------------- Monitor -----------
+with tab_monitor:
+    decision, detection, validity = result.decision, result.detection, result.validity
+    banner = {"HEALTHY": st.success, "WARNING": st.warning, "CRITICAL": st.error, "CRITICAL (unconfirmed)": st.warning, "INVALID": st.info}[
+        decision.state
+    ]
+    banner(f"**{decision.state}** — {decision.explanation}", icon=STATE_ICONS[decision.state])
+    for warning in validity.warnings:
+        if decision.state != "INVALID":
+            st.warning(warning, icon=":material/report:")
+
+    prev_score = st.session_state.run_log[-2]["score"] if len(st.session_state.run_log) >= 2 else None
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(
+        "Machine health",
+        decision.state,
+        help="HEALTHY / WARNING / CRITICAL from the score thresholds; INVALID when input fails validity checks.",
+        border=True,
+    )
+    m2.metric(
+        "Anomaly score",
+        f"{detection.score:.1f} %",
+        delta=None if prev_score is None else f"{detection.score - prev_score:+.1f} vs previous run",
+        delta_color="inverse",
+        help="Logistic squash of the strongest weighted z-score against the healthy baseline. 3σ = 50 %.",
+        border=True,
+    )
+    m3.metric(
+        "Confidence",
+        f"{validity.confidence:.0%}",
+        help="Input-quality factor in [0, 1]. Below the minimum, critical verdicts are marked unconfirmed.",
+        border=True,
+    )
+    m4.metric(
+        "Estimated RUL",
+        "—" if decision.rul_days is None else f"{decision.rul_days} days",
+        help="Illustrative only: nominal RUL scaled by the score. Not a survival model.",
+        border=True,
+    )
+
+    viz_col, action_col = st.columns([1.6, 1], gap="large")
+    with viz_col:
+        st.subheader("Signal analysis")
+        view = st.pills(
+            "View", ["Spectrogram", "PSD vs baseline", "Envelope spectrum", "Waveform"], default="Spectrogram", label_visibility="collapsed"
+        )
+        kind = {
+            "Spectrogram": "spectrogram",
+            "PSD vs baseline": "psd",
+            "Envelope spectrum": "envelope",
+            "Waveform": "waveform",
+            None: "spectrogram",
+        }[view]
+        st.image(cached_plot(kind, signal.audio, signal.sample_rate_hz, signal.source, config_json, is_dark), width="stretch")
+        feats = result.features
+        with st.container(border=True):
+            st.markdown("**Evidence channels** (value → z-score vs baseline)")
+            rows = []
+            for ch in CHANNELS:
+                value = feats.channels()[ch]
+                z = detection.z_by_channel.get(ch, float("nan"))
+                rows.append(
+                    {
+                        "channel": ch,
+                        "value": None if not np.isfinite(value) else round(float(value), 3),
+                        "baseline mean": round(baseline.mean.get(ch, float("nan")), 3),
+                        "z": None if not np.isfinite(z) else round(float(z), 2),
+                        "weight": config.weights.get(ch, 0.0),
+                        "driver": "◀" if ch == detection.driver else "",
+                    }
+                )
+            st.dataframe(pd.DataFrame(rows), hide_index=True, width="stretch")
+            if np.isfinite(feats.envelope_peak_hz):
+                st.caption(
+                    f"Envelope peak at {feats.envelope_peak_hz:.1f} Hz · residual high-passed above {config.highpass_hz / 1000:.1f} kHz"
+                )
+
+    with action_col:
+        st.subheader("Recommended action")
+        st.image(channel_contributions_png(detection.z_by_channel, config.weights, baseline, config, plot_theme()), width="stretch")
+        with st.status("Analysis steps", expanded=False, state="complete"):
+            for name, ts in result.steps:
+                st.write(f"`{ts.astimezone().strftime('%H:%M:%S.%f')[:-3]}` {name}")
+        state_badge(decision.state, validity.confidence)
+        st.write(decision.recommended_action)
+        if decision.actionable:
+            payload = work_order_payload(config.machine(), detection, decision, config, source=signal.source)
+            st.markdown("**Proposed SAP S/4HANA PM work order (mock)**")
+            st.json(payload, expanded=False)
+            approved_ids = {a["ticket_id"] for a in st.session_state.approvals}
+            if st.button("Approve work order (simulated planner gate)", key="approve", icon=":material/how_to_reg:", width="stretch"):
+                st.session_state.approvals.append(
+                    {**payload, "approved_at": datetime.now(UTC).isoformat(timespec="seconds"), "status": "APPROVED (simulated)"}
+                )
+                st.toast("Work order approved in the simulated audit log", icon=":material/check:")
+            if approved_ids:
+                st.caption(f"{len(approved_ids)} simulated approval(s) recorded this session.")
+        elif decision.state == "CRITICAL (unconfirmed)":
+            st.info("No work order is proposed while confidence is below the configured minimum.", icon=":material/info:")
+
+    with st.expander("Export", icon=":material/download:"):
+        e1, e2, e3, e4 = st.columns(4)
+        e1.download_button(
+            "Run log CSV",
+            rows_to_csv(st.session_state.run_log),
+            file_name="run_log.csv",
+            mime="text/csv",
+            width="stretch",
+            disabled=not st.session_state.run_log,
+        )
+        e2.download_button(
+            "Result JSON",
+            json.dumps(result.to_dict(), indent=2, default=str),
+            file_name="analysis.json",
+            mime="application/json",
+            width="stretch",
+        )
+        e3.download_button(
+            "Signal + metadata NPZ",
+            result_npz_bytes(signal, result.to_dict()),
+            file_name="signal.npz",
+            mime="application/octet-stream",
+            width="stretch",
+        )
+        e4.download_button("Signal WAV", audio_to_wav_bytes(signal), file_name="signal.wav", mime="audio/wav", width="stretch")
+        p1, p2, p3, p4 = st.columns(4)
+        for col, kind_name in zip((p1, p2, p3, p4), ("spectrogram", "psd", "envelope", "waveform"), strict=True):
+            col.download_button(
+                f"{kind_name} PNG",
+                cached_plot(kind_name, signal.audio, signal.sample_rate_hz, signal.source, config_json, is_dark),
+                file_name=f"{kind_name}.png",
+                mime="image/png",
+                width="stretch",
+            )
+        if st.session_state.approvals:
+            st.download_button(
+                "Approval audit log JSON",
+                json.dumps(st.session_state.approvals, indent=2),
+                file_name="approvals.json",
+                mime="application/json",
+            )
+
+# ---------------------------------------------------------------- Experiment --------
+with tab_experiment:
+    st.subheader("Advanced parameters")
+    st.caption(
+        "Sidebar controls cover the common knobs; everything else is here. Changes apply on submit and are reflected in the configuration hash."
+    )
+    numeric_fields = [
+        f
+        for f in fields(ExperimentConfig)
+        if f.name not in SIDEBAR_FIELDS and f.name not in {"weights", "std_floors", "inject_bursts", "inject_bearing_impacts"}
+    ]
+    with st.form("advanced_form", border=True):
+        cols = st.columns(3)
+        new_values: dict[str, Any] = {}
+        for i, f in enumerate(numeric_fields):
+            current = st.session_state.cfg[f.name]
+            with cols[i % 3]:
+                if isinstance(current, bool):
+                    new_values[f.name] = st.checkbox(f.name, value=current)
+                elif isinstance(current, int) and not isinstance(current, bool):
+                    new_values[f.name] = st.number_input(f.name, value=int(current), step=1)
+                elif isinstance(current, float):
+                    new_values[f.name] = st.number_input(f.name, value=float(current), format="%.4f")
+                else:
+                    new_values[f.name] = st.text_input(f.name, value=str(current))
+        st.markdown("**Channel weights** (0 excludes a channel from the verdict) and **baseline std floors**")
+        wcols = st.columns(len(CHANNELS))
+        weights: dict[str, float] = {}
+        floors: dict[str, float] = {}
+        for col, ch in zip(wcols, CHANNELS, strict=True):
+            with col:
+                weights[ch] = st.number_input(
+                    f"w · {ch}", min_value=0.0, max_value=2.0, value=float(st.session_state.cfg["weights"][ch]), step=0.1
+                )
+                floors[ch] = st.number_input(
+                    f"floor · {ch}", min_value=1e-3, value=float(st.session_state.cfg["std_floors"][ch]), format="%.3f"
+                )
+        if st.form_submit_button("Apply advanced parameters", type="primary", icon=":material/tune:"):
+            candidate = dict(st.session_state.cfg)
+            candidate.update(new_values)
+            candidate["weights"] = weights
+            candidate["std_floors"] = floors
+            try:
+                ExperimentConfig.from_dict(candidate)
+                st.session_state.cfg = candidate
+                st.rerun()
+            except ValueError as exc:
+                st.error(str(exc))
+
+    st.subheader("Baseline")
+    b1, b2 = st.columns([1.4, 1])
+    with b1:
+        st.caption(f"Active baseline: `{baseline.source}` from {baseline.n} healthy references.")
+        st.dataframe(
+            pd.DataFrame(
+                {
+                    "channel": list(baseline.mean),
+                    "mean": list(baseline.mean.values()),
+                    "std": list(baseline.std.values()),
+                    "floor": [config.std_floors[c] for c in baseline.mean],
+                }
+            ),
+            hide_index=True,
+            width="stretch",
+        )
+    with b2:
+        st.write("Build a baseline from recordings you know to be healthy (at least two).")
+        n_custom = len(st.session_state.custom_baseline_feats)
+        if st.button(f"Add current signal as healthy reference ({n_custom} collected)", icon=":material/add:", width="stretch"):
+            st.session_state.custom_baseline_feats.append(extract_features(signal.audio, signal.sample_rate_hz, config))
+            if len(st.session_state.custom_baseline_feats) >= 2:
+                st.session_state.custom_baseline = Baseline.from_features(
+                    st.session_state.custom_baseline_feats, source=f"custom:{len(st.session_state.custom_baseline_feats)}-recordings"
+                )
+            st.rerun()
+        if st.button(
+            "Reset to synthetic baseline",
+            icon=":material/restart_alt:",
+            width="stretch",
+            disabled=st.session_state.custom_baseline is None and n_custom == 0,
+        ):
+            st.session_state.custom_baseline = None
+            st.session_state.custom_baseline_feats = []
+            st.rerun()
+
+    st.subheader("Parameter sweep")
+
+    @st.fragment
+    def sweep_tool(base_config_json: str) -> None:
+        base = ExperimentConfig.from_text(base_config_json)
+        s1, s2, s3, s4, s5 = st.columns([1.4, 1, 1, 1, 1])
+        parameter = s1.selectbox("Parameter", list(sweepable_parameters()), format_func=lambda p: f"{p} — {sweepable_parameters()[p]}")
+        current_value = float(getattr(base, parameter))
+        lo = s2.number_input("From", value=0.0 if current_value > 0 else current_value - 1.0, format="%.4f")
+        hi = s3.number_input("To", value=max(current_value * 2, current_value + 0.1), format="%.4f")
+        steps = int(s4.number_input("Steps", min_value=2, max_value=25, value=6))
+        seeds = int(s5.number_input("Seeds", min_value=1, max_value=10, value=3))
+        fault_mode = st.segmented_control("Fault model", ["bursts", "bearing"], default="bursts")
+        if st.button("Run sweep", key="run_sweep", type="primary", icon=":material/stacked_line_chart:"):
+            values = [float(v) for v in np.linspace(lo, hi, steps)]
+            with st.spinner("Sweeping…"):
+                try:
+                    points = sweep(base, parameter, values, seeds=seeds, fault_mode=fault_mode or "bursts")
+                except ValueError as exc:
+                    st.error(str(exc))
+                    return
+            st.session_state.sweep_rows = [p.row() | {"parameter": parameter} for p in points]
+        rows = st.session_state.get("sweep_rows")
+        if rows:
+            df = pd.DataFrame(rows)
+            long = pd.concat(
+                [
+                    pd.DataFrame(
+                        {
+                            "value": df["value"],
+                            "score": df["fault_mean"],
+                            "low": df["fault_min"],
+                            "high": df["fault_max"],
+                            "condition": "fault",
+                        }
+                    ),
+                    pd.DataFrame(
+                        {
+                            "value": df["value"],
+                            "score": df["healthy_mean"],
+                            "low": df["healthy_min"],
+                            "high": df["healthy_max"],
+                            "condition": "healthy",
+                        }
+                    ),
+                ]
+            )
+            band = (
+                alt.Chart(long)
+                .mark_area(opacity=0.2)
+                .encode(x=alt.X("value:Q", title=rows[0]["parameter"]), y="low:Q", y2="high:Q", color="condition:N")
+            )
+            line = (
+                alt.Chart(long)
+                .mark_line(point=True)
+                .encode(x="value:Q", y=alt.Y("score:Q", title="Anomaly score (%)", scale=alt.Scale(domain=[0, 100])), color="condition:N")
+            )
+            rule = alt.Chart(pd.DataFrame({"y": [base.critical_threshold]})).mark_rule(strokeDash=[4, 4]).encode(y="y:Q")
+            st.altair_chart(band + line + rule, width="stretch")
+            st.dataframe(df, hide_index=True, width="stretch")
+            st.download_button("Sweep CSV", rows_to_csv(rows), file_name="sweep.csv", mime="text/csv")
+
+    sweep_tool(config_json)
+
+    st.subheader("Run log")
+    if st.session_state.run_log:
+        st.dataframe(pd.DataFrame(st.session_state.run_log), hide_index=True, width="stretch")
+        r1, r2 = st.columns([1, 5])
+        r1.download_button("Download CSV", rows_to_csv(st.session_state.run_log), file_name="run_log.csv", mime="text/csv", width="stretch")
+        if r2.button("Clear log", icon=":material/delete:"):
+            st.session_state.run_log = []
+            st.session_state.last_logged_key = None
+            st.rerun()
+    else:
+        st.caption("Every distinct (signal, configuration, baseline) analysis is appended here automatically.")
+
+# ---------------------------------------------------------------- Batch -------------
+with tab_batch:
+    st.subheader("Batch evaluation")
+    st.caption(
+        "Score many recordings with one shared baseline, then evaluate the detector against ground-truth labels with ROC / precision-recall curves."
+    )
+
+    @st.fragment
+    def batch_tool(base_config_json: str, baseline_json: str) -> None:
+        base = ExperimentConfig.from_text(base_config_json)
+        shared_baseline = Baseline.from_dict(json.loads(baseline_json))
+        left, right = st.columns([1, 1])
+        with left:
+            labelled = [e.file for e in manifest]
+            chosen = st.multiselect("Sample library files", labelled, default=[e.file for e in manifest if e.label is not None])
+        with right:
+            uploads = st.file_uploader("Additional recordings", type=["wav", "flac", "ogg"], accept_multiple_files=True)
+            manifest_upload = st.file_uploader("Optional labels CSV (file,condition|label)", type=["csv"])
+
+        upload_labels: dict[str, int | None] = {}
+        if manifest_upload is not None:
+            upload_labels = labels_from_manifest_text(manifest_upload.getvalue().decode("utf-8"))
+        label_rows = [{"file": u.name, "label": upload_labels.get(u.name)} for u in uploads or []]
+        if label_rows:
+            st.caption("Edit labels for uploaded files (1 = fault, 0 = healthy, blank = exclude from metrics).")
+            edited = st.data_editor(
+                pd.DataFrame(label_rows),
+                hide_index=True,
+                width="stretch",
+                column_config={"label": st.column_config.NumberColumn(min_value=0, max_value=1, step=1)},
+            )
+            upload_labels = {row["file"]: (None if pd.isna(row["label"]) else int(row["label"])) for _, row in edited.iterrows()}
+
+        if st.button("Run batch", key="run_batch", type="primary", icon=":material/playlist_play:"):
+            signals: list[tuple[Signal, int | None]] = []
+            for entry in manifest:
+                if entry.file in chosen:
+                    signals.append((cached_sample(str(entry.path)), entry.label))
+            for u in uploads or []:
+                try:
+                    signals.append((load_audio(u.getvalue(), name=u.name), upload_labels.get(u.name)))
+                except AudioLoadError as exc:
+                    st.warning(f"Skipped {u.name}: {exc}")
+            if not signals:
+                st.warning("Select at least one recording.")
+                return
+            with st.spinner(f"Scoring {len(signals)} recordings…"):
+                st.session_state.batch = run_batch(signals, base, shared_baseline)
+
+        batch: BatchResult | None = st.session_state.get("batch")
+        if batch is None:
+            return
+        df = pd.DataFrame(batch.rows)
+        show_cols = [
+            "source",
+            "label",
+            "state",
+            "score",
+            "confidence",
+            "driver",
+            "flags",
+            "feat_band_contrast_db",
+            "feat_band_contrast_transient_db",
+            "feat_residual_kurtosis",
+            "feat_envelope_peak_snr_db",
+        ]
+        st.dataframe(df[[c for c in show_cols if c in df.columns]], hide_index=True, width="stretch")
+        report = batch.report
+        if report is not None:
+            k1, k2, k3, k4, k5 = st.columns(5)
+            k1.metric(
+                "ROC AUC",
+                "—" if report.roc is None else f"{report.roc.auc:.3f}",
+                help="Area under the ROC curve; 1.0 = perfect ranking.",
+                border=True,
+            )
+            k2.metric("Average precision", "—" if report.pr is None else f"{report.pr.auc:.3f}", border=True)
+            k3.metric(f"Precision @ {report.threshold:.0f}", f"{report.precision:.2f}", border=True)
+            k4.metric(f"Recall @ {report.threshold:.0f}", f"{report.recall:.2f}", border=True)
+            k5.metric("Confusion", f"TP {report.tp} FP {report.fp} TN {report.tn} FN {report.fn}", border=True)
+            if report.roc is not None and report.pr is not None:
+                c1, c2 = st.columns(2)
+                roc_df = pd.DataFrame({"FPR": report.roc.x, "TPR": report.roc.y})
+                pr_df = pd.DataFrame({"Recall": report.pr.x, "Precision": report.pr.y})
+                roc_chart = (
+                    alt.Chart(roc_df)
+                    .mark_line(point=True)
+                    .encode(x=alt.X("FPR:Q", scale=alt.Scale(domain=[0, 1])), y=alt.Y("TPR:Q", scale=alt.Scale(domain=[0, 1])))
+                    .properties(title=f"ROC (AUC {report.roc.auc:.3f})")
+                )
+                diag = (
+                    alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(strokeDash=[4, 4], color="gray").encode(x="x:Q", y="y:Q")
+                )
+                c1.altair_chart(roc_chart + diag, width="stretch")
+                pr_chart = (
+                    alt.Chart(pr_df)
+                    .mark_line(point=True)
+                    .encode(x=alt.X("Recall:Q", scale=alt.Scale(domain=[0, 1])), y=alt.Y("Precision:Q", scale=alt.Scale(domain=[0, 1])))
+                    .properties(title=f"Precision-recall (AP {report.pr.auc:.3f})")
+                )
+                c2.altair_chart(pr_chart, width="stretch")
+            for note in report.notes:
+                st.info(note)
+        if batch.skipped:
+            st.caption("Excluded from metrics (unlabelled or invalid): " + ", ".join(batch.skipped))
+        st.download_button("Batch results CSV", rows_to_csv(batch.rows), file_name="batch_results.csv", mime="text/csv")
+
+    batch_tool(config_json, json.dumps(baseline.to_dict()))
+
+# ---------------------------------------------------------------- Methods -----------
+with tab_methods:
+    st.markdown(
+        f"""
+        ### How the verdict is produced
+
+        **1. Signal model.** Synthetic captures are a rotating-machine tone (carrier + third harmonic) in white
+        noise at {config.sample_rate_hz / 1000:.0f} kHz. Two fault models can be injected: damped
+        {config.burst_frequency_hz / 1000:.0f} kHz micro-crack bursts, and outer-race bearing impacts at
+        BPFO ≈ {config.shaft_hz * config.bpfo_ratio:.1f} Hz that ring a {config.resonance_hz / 1000:.1f} kHz resonance.
+
+        **2. Features** (all normalised, so gain and recording length do not matter):
+
+        | Channel | What it measures | Fires on |
+        | --- | --- | --- |
+        | `band_contrast_db` | Welch PSD in {config.band_low_hz / 1000:.0f}–{config.band_high_hz / 1000:.0f} kHz relative to the {config.reference_band_low_hz / 1000:.0f}–{config.reference_band_high_hz / 1000:.0f} kHz reference band | Narrow-band ultrasonic content; ≈ 0 dB for white noise of any level |
+        | `band_contrast_transient_db` | 98th percentile − median of the same contrast computed per ~20 ms STFT frame | Short bursts that whole-capture averaging dilutes, e.g. under heavy noise; ≈ 1–2 dB for stationary noise |
+        | `band_power_db` | Diagnostic band relative to total power | Any high-frequency energy, including broadband noise (weight 0 by default) |
+        | `residual_kurtosis` | Kurtosis of the residual high-passed above {config.highpass_hz / 1000:.1f} kHz (Gaussian = 3) | Repetitive impacts / clicks |
+        | `residual_crest_factor` | Peak ÷ RMS of the residual | Isolated impulses |
+        | `envelope_peak_snr_db` | Prominence of the strongest line in the Hilbert-envelope spectrum ({config.envelope_min_hz:.0f}–{config.envelope_max_hz:.0f} Hz) | Periodic bearing defects (BPFO / BPFI / BSF) |
+
+        **3. Baseline.** {config.baseline_seeds} healthy synthetic renders of the selected profile give a mean and
+        standard deviation per channel. The standard deviation is floored so near-deterministic baselines do not
+        explode z-scores. You can replace it with your own healthy recordings in the Experiment tab.
+
+        **4. Score.** $z_c = \\max(0, (x_c - \\mu_c) / \\max(\\sigma_c, \\mathrm{{floor}}_c))$, then
+        $z = \\max_c w_c z_c$ and $\\mathrm{{score}} = 100 / (1 + e^{{-(z - {config.z_center:g}) / {config.z_scale:g}}})$.
+        The strongest channel drives the verdict, so a bearing defect that is invisible above 20 kHz can still alarm
+        through the envelope spectrum. A {config.z_center:g}σ excursion scores 50 %.
+
+        **5. Validity gating.** Silence invalidates the input. Low sample rate (band above Nyquist), clipping and short
+        captures reduce a confidence factor. A critical score with confidence below {config.min_confidence:.0%} is
+        reported as *CRITICAL (unconfirmed)* and no work order is proposed.
+
+        **6. Decision.** HEALTHY ≤ {config.warn_threshold:.0f} % < WARNING ≤ {config.critical_threshold:.0f} % < CRITICAL.
+        A critical, confident verdict produces a mock SAP S/4HANA PM payload carrying the configuration hash
+        (`{config_hash(config)}`), feature version (`{FEATURE_VERSION}`), real timestamps and a UUID-derived ticket id.
+        Nothing is transmitted.
+
+        **Teaching demo boost.** The sidebar toggle adds a fixed {DEMO_BOOST_POINTS:.0f} points *after* scoring so a
+        lesson can show the critical path on demand. It is flagged in the explanation, run log and payload and must
+        never be mistaken for a measurement.
+        """
+    )
+    with st.expander("Glossary"):
+        st.markdown(
+            """
+            - **Nyquist frequency** — half the sample rate; the highest frequency a recording can represent. A 16 kHz file cannot contain a 22 kHz fault.
+            - **Welch PSD** — power spectral density estimated by averaging windowed FFTs; smoother and gain-normalised compared with a single FFT.
+            - **Kurtosis** — fourth standardised moment; 3 for Gaussian noise, higher when the signal contains sharp impulses.
+            - **Crest factor** — peak amplitude divided by RMS; another impulsiveness measure.
+            - **Envelope spectrum** — spectrum of the Hilbert envelope; reveals the *repetition rate* of impacts (e.g. BPFO) rather than their carrier frequency.
+            - **BPFO** — ball-pass frequency, outer race: how often rolling elements strike an outer-race defect; ≈ 3.585 × shaft speed for the modelled bearing.
+            - **z-score** — number of baseline standard deviations a feature is above the healthy mean.
+            - **ROC AUC / average precision** — ranking quality of the score over labelled recordings; 1.0 is perfect.
+            - **RUL** — remaining useful life. Here purely illustrative.
+            """
+        )
     st.markdown(
         """
-        ### Application purpose
-
-        This MVP demonstrates how an acoustic signal can become a machine-health decision. It is an educational simulation: the detector is rule-based, the RUL is illustrative, and the SAP S/4HANA work order is mock JSON rather than a real API request.
-
-        ### Signal-processing concepts
-
-        - The simulator uses a **48 kHz** sample rate, giving a **24 kHz Nyquist frequency**.
-        - A base sine wave and third harmonic approximate rotating-machine sound.
-        - White noise approximates measurement and environmental noise.
-        - The anomaly toggle adds damped **22 kHz** bursts above the 20 kHz diagnostic band.
-        - Librosa renders a Mel-spectrogram so energy can be inspected across time and frequency.
-        - The dummy detector uses the mean FFT magnitude above 20 kHz and a deterministic demo boost.
-
-        ### Study workflow
-
-        1. Run the healthy path with anomaly injection off.
-        2. Run the fault path with injection on.
-        3. Compare the score, health state, RUL, and spectrogram.
-        4. Change a machine base frequency and explain the visual difference.
-        5. Replace the demo boost with measured features and add confidence scoring.
-        6. Add human approval before any real maintenance action.
-
-        ### Engineering questions
-
-        - Why would a 16 kHz recording be unsuitable for studying a 22 kHz fault?
-        - Why does a spectrogram reveal intermittent events better than an average spectrum?
-        - What false-positive and false-negative costs exist in predictive maintenance?
-        - Which metadata should be stored with a real model decision?
-        - Why must a production SAP request be authenticated, auditable, and verified?
-
-        ### Full references
-
-        - [Central application documentation](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/application.md)
-        - [Architecture and Mermaid workflows](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/architecture.md)
-        - [Engineering student study guide](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/engineering-student-guide.md)
-        - [Source code on GitHub](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/app.py)
-
-        > Production note: never treat the demo score or mock SAP payload as a certified diagnosis or proof that a work order exists.
+        **Further reading:** [application documentation](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/application.md) ·
+        [architecture](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/architecture.md) ·
+        [student guide](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/docs/engineering-student-guide.md) ·
+        [sample data set](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/blob/main/data/samples/README.md) ·
+        [source](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp)
         """
     )

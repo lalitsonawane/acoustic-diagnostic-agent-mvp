@@ -1,0 +1,37 @@
+---
+description: Keep all project documentation in the repository and in Notion, always in sync
+alwaysApply: true
+---
+
+# Documentation lives in two places, always in sync
+
+Every piece of project documentation must exist in **both** this repository and the
+Notion Project Knowledge Library, and both copies must be updated in the same turn.
+
+- Notion library: https://app.notion.com/p/7cc641cb90c1408d9419894d90233c7b
+  (data source `collection://f0c83c93-62b6-4e7a-a0e3-3f6d687bc220`)
+- Sync index (source of the mapping): [`docs/notion-sync.md`](../../docs/notion-sync.md)
+
+## Where things go
+
+| Content | Repository | Notion |
+| --- | --- | --- |
+| Reference docs (architecture, application guide, student guide, sample data) | `README.md`, `docs/*.md`, `data/samples/README.md` | Page in the library, Type = Reference / How-to |
+| Session summaries, decisions, research findings | `docs/notes/YYYY-MM-DD-<subject>.md` | Page in the library, Type = Session summary / Decision / Research |
+| Mapping between the two | `docs/notion-sync.md` | `Repo mirror:` line on each Notion page |
+
+## Rules
+
+1. Creating or editing a Notion page for this project → write or update the matching
+   file under `docs/notes/` (or the matching reference doc) and add/refresh the row in
+   `docs/notion-sync.md`. Commit it together with any code change.
+2. Creating or editing `README.md`, anything in `docs/`, or `data/samples/README.md` →
+   update the corresponding Notion page in the same turn (create it if missing, and
+   add it to `docs/notion-sync.md`).
+3. Every Notion page for this project carries a `Repo mirror:` line with the repo path.
+4. Never leave one side stale. If a sync cannot be completed (Notion unavailable, no
+   push access), say so explicitly in the summary and record it as an Open follow-up
+   in both places once reachable.
+5. Mirrors are content-equivalent, not necessarily byte-identical: convert Notion
+   headings/callouts to Markdown, keep the same sections (Outcome, Key decisions,
+   Artifacts/links, Open follow-ups), and keep dates and decision wording unchanged.

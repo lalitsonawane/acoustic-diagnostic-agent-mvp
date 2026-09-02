@@ -385,6 +385,7 @@ with st.sidebar:
 # ----------------------------------------------------------------------------------
 
 st.title("Acoustic diagnostic agent")
+st.caption("**Lalit Sonawane** · Idea researcher and developer")
 st.caption(
     "High-frequency acoustic evidence is compared against a healthy baseline and turned into a "
     "maintenance decision. Educational MVP: nothing is sent to SAP."

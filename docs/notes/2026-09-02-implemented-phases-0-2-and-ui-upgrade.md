@@ -2,7 +2,7 @@
 
 | Property | Value |
 | --- | --- |
-| Notion page | _see docs/notion-sync.md (created with this note)_ |
+| Notion page | https://app.notion.com/p/3cf89f54d2c281e58f18da600049ca14 |
 | Project | Acoustic Diagnostic Agent |
 | Type | Session summary |
 | Status | Active |
@@ -68,5 +68,7 @@ confidence, 16 kHz is *unconfirmed*, silence is *INVALID*).
   `requirements.txt` pins install on Python 3.12 there).
 - Real-data loaders (MAFAULDA CSV, CWRU `.mat`) so the Batch tab can score public datasets.
 - Consider a learned detector on the same feature vector for an ROC comparison.
-- Notion mirrors of the five changed docs must be refreshed (this note's Notion page created
-  in the same session).
+- Merge PR #2 after CI is green.
+
+Notion mirrors of the five changed docs (README, application, architecture, student guide,
+samples README) were refreshed in this session and the plan page carries an "Implemented" banner.

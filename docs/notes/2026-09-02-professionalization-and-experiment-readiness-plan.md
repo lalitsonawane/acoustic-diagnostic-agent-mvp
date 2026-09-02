@@ -1,5 +1,10 @@
 # 2026-09-02 — Acoustic Diagnostic Agent — Professionalization & experiment-readiness plan
 
+> **Implemented 2026-09-02.** Phases 0–2, the UI upgrade and the cheap Phase 3 decision-integrity
+> items shipped in [PR #2](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/pull/2)
+> (v0.2.0). See [the session summary](2026-09-02-implemented-phases-0-2-and-ui-upgrade.md) for
+> decisions and remaining follow-ups (Phase 3 remainder, Phase 4).
+
 | Property | Value |
 | --- | --- |
 | Notion page | https://app.notion.com/p/3cf89f54d2c2816aa963e41e353e8fa5 |

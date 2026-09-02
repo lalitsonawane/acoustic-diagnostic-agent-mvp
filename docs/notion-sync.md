@@ -19,7 +19,7 @@ Neither side is the single source of truth. A reader who only has GitHub, or onl
 | [`data/samples/README.md`](../data/samples/README.md) | [Sample WAV test set (data/samples)](https://app.notion.com/p/3cf89f54d2c2816b98ead3c25d0e5e15) | Reference |
 | [`docs/notes/2026-09-02-professionalization-and-experiment-readiness-plan.md`](notes/2026-09-02-professionalization-and-experiment-readiness-plan.md) | [2026-09-02 — Professionalization & experiment-readiness plan](https://app.notion.com/p/3cf89f54d2c2816aa963e41e353e8fa5) | Research |
 | [`docs/notes/2026-09-02-docs-in-repo-and-notion-kept-in-sync.md`](notes/2026-09-02-docs-in-repo-and-notion-kept-in-sync.md) | [2026-09-02 — Documentation lives in repo and Notion, kept in sync](https://app.notion.com/p/3cf89f54d2c281b48659f9441ee42979) | Decision |
-| [`docs/notes/2026-09-02-implemented-phases-0-2-and-ui-upgrade.md`](notes/2026-09-02-implemented-phases-0-2-and-ui-upgrade.md) | 2026-09-02 — Implemented phases 0-2 and UI upgrade (v0.2.0) — _Notion page created on sync_ | Session summary |
+| [`docs/notes/2026-09-02-implemented-phases-0-2-and-ui-upgrade.md`](notes/2026-09-02-implemented-phases-0-2-and-ui-upgrade.md) | [2026-09-02 — Implemented phases 0-2 and UI upgrade (v0.2.0)](https://app.notion.com/p/3cf89f54d2c281e58f18da600049ca14) | Session summary |
 | [`CHANGELOG.md`](../CHANGELOG.md) | Summarised in the session note above; the changelog itself is repo-only | — |
 | `docs/notion-sync.md` (this file) | Each Notion page carries a `Repo mirror:` callout pointing back here | — |
 

@@ -7,6 +7,7 @@ handle gracefully, plus two physically motivated bearing-impact recordings.
 Usage:
     python scripts/generate_sample_wavs.py [--out data/samples] [--duration 2.0]
 
+Signal primitives come from ``acoustic_agent.synth``.
 Every file is regenerated from a fixed per-file seed, so the output is
 byte-for-byte reproducible. A ``manifest.csv`` describing each file is written
 alongside the audio.
@@ -16,29 +17,27 @@ from __future__ import annotations
 
 import argparse
 import csv
+import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
+from typing import Any
 
 import numpy as np
 import soundfile as sf
 
-MACHINE_PROFILES: dict[str, float] = {
-    "robotic_arm": 440.0,
-    "stamping_press": 220.0,
-    "conveyor_drive": 330.0,
-}
+# Allow running as ``python scripts/generate_sample_wavs.py`` without installing the package.
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-# Amplitudes below follow app.generate_acoustic_data so the files are directly
-# comparable with the in-app simulator.
-CARRIER_AMP = 0.20
-HARMONIC_AMP = 0.08
-DEFAULT_NOISE_STD = 0.018
-DEFAULT_BURST_AMP = 0.42
-BURST_FREQ_HZ = 22_000.0
-BURST_PERIOD_S = 0.37
-BURST_FIRST_S = 0.25
-BURST_LEN_S = 0.012
-BURST_DECAY = 260.0
+from acoustic_agent.config import PROFILE_BY_KEY
+from acoustic_agent.synth import (
+    DEFAULT_BURST_AMP,
+    DEFAULT_NOISE_STD,
+    add_bearing_impacts,
+    add_ultrasonic_bursts,
+    tonal_base,
+)
+
+MACHINE_PROFILES: dict[str, float] = {key: p.base_frequency_hz for key, p in PROFILE_BY_KEY.items()}
 
 
 @dataclass
@@ -55,57 +54,7 @@ class Spec:
     purpose: str
     duration_s: float = 0.0
     gain: float = 1.0
-    extra: dict = field(default_factory=dict)
-
-
-def tonal_base(profile_hz: float, t: np.ndarray, rng: np.random.Generator, noise_std: float) -> np.ndarray:
-    carrier = CARRIER_AMP * np.sin(2 * np.pi * profile_hz * t)
-    harmonic = HARMONIC_AMP * np.sin(2 * np.pi * 3 * profile_hz * t)
-    return carrier + harmonic + rng.normal(0.0, noise_std, t.shape)
-
-
-def add_ultrasonic_bursts(signal: np.ndarray, sr: int, amplitude: float) -> None:
-    """In-place: short damped 22 kHz bursts, identical timing to the app simulator."""
-    duration = signal.size / sr
-    for start in np.arange(BURST_FIRST_S, duration, BURST_PERIOD_S):
-        index = int(start * sr)
-        n = min(int(BURST_LEN_S * sr), signal.size - index)
-        if n <= 0:
-            continue
-        bt = np.arange(n) / sr
-        signal[index : index + n] += amplitude * np.exp(-bt * BURST_DECAY) * np.sin(2 * np.pi * BURST_FREQ_HZ * bt)
-
-
-def add_bearing_impacts(
-    signal: np.ndarray,
-    sr: int,
-    shaft_hz: float,
-    bpfo_ratio: float,
-    resonance_hz: float,
-    amplitude: float,
-    rng: np.random.Generator,
-) -> dict:
-    """In-place: periodic impacts at the outer-race defect frequency exciting a structural resonance.
-
-    This is closer to a real bearing fault than a 22 kHz tone: the diagnostic
-    information lives in the *envelope* (repetition rate = BPFO) and in a mid/high
-    frequency resonance band, not in a single ultrasonic carrier.
-    """
-    bpfo_hz = shaft_hz * bpfo_ratio
-    period = 1.0 / bpfo_hz
-    duration = signal.size / sr
-    # 1-2 % random jitter approximates rolling-element slip.
-    starts = np.cumsum(rng.normal(period, 0.015 * period, int(duration / period) + 2))
-    ring_len = int(0.004 * sr)
-    for start in starts[starts < duration]:
-        index = int(start * sr)
-        n = min(ring_len, signal.size - index)
-        if n <= 0:
-            continue
-        bt = np.arange(n) / sr
-        ring = np.exp(-bt * 1500.0) * np.sin(2 * np.pi * resonance_hz * bt)
-        signal[index : index + n] += amplitude * rng.uniform(0.8, 1.2) * ring
-    return {"shaft_hz": shaft_hz, "bpfo_hz": round(bpfo_hz, 2), "resonance_hz": resonance_hz}
+    extra: dict[str, Any] = field(default_factory=dict)
 
 
 def render(spec: Spec, duration: float) -> tuple[np.ndarray, Spec]:
@@ -301,7 +250,7 @@ def main() -> None:
     args = parser.parse_args()
 
     args.out.mkdir(parents=True, exist_ok=True)
-    rows: list[dict] = []
+    rows: list[dict[str, Any]] = []
     for spec in build_specs(args.duration):
         audio, spec = render(spec, args.duration)
         path = args.out / spec.file

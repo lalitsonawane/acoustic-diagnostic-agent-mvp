@@ -1,157 +1,199 @@
 # Application documentation: Acoustic Diagnostic Agent
 
-This page is the central reference for operating and studying the application. It is written for engineering students, developers, and reviewers who want to understand the complete MVP in one place.
+This page is the central reference for operating and studying the application (v0.2.0). It is
+written for engineering students, developers and reviewers who want to understand the complete
+system in one place.
 
 ## 1. Application purpose
 
-The application demonstrates a condition-monitoring loop:
+The application demonstrates a condition-monitoring loop with honest measurement and gated action:
 
 ```mermaid
 flowchart TD
-    input["Acoustic input"] --> analyze["Analyze frequency content"]
-    analyze --> diagnose["Estimate anomaly risk"]
-    diagnose --> decide{"Risk above 75%?"}
-    decide -->|"No"| monitor["Continue monitoring"]
-    decide -->|"Yes"| maintain["Prepare maintenance request"]
-    maintain --> review["Planner review in a production system"]
+    input["Acoustic input"] --> validity["Validity checks\n(silence, Nyquist, clipping, length)"]
+    input --> features["Normalised features\n(Welch, residual, envelope)"]
+    features --> score["Baseline z-scores -> logistic score"]
+    validity --> decide{"Score > critical\nand confidence >= 0.6?"}
+    score --> decide
+    decide -->|"No"| monitor["HEALTHY / WARNING / unconfirmed:\ncontinue monitoring"]
+    decide -->|"Yes"| maintain["Propose work order"]
+    maintain --> review["Planner approval gate"]
 ```
 
-The UI simulates a machine operator receiving acoustic evidence, seeing health metrics, and reviewing a proposed SAP S/4HANA maintenance action.
+The UI simulates an operator receiving acoustic evidence, reading health metrics with their
+supporting evidence, and reviewing a proposed SAP S/4HANA maintenance action.
 
-## 2. Application screen reference
+## 2. Screen reference
 
-### Sidebar
+### Sidebar: Source -> Configure -> Analyse
 
-- **Machine** selects one of three profiles:
-  - Robotic Arm Bearings
-  - Stamping Press
-  - Conveyor Drive
-- **Inject Micro-Crack Anomaly** adds damped 22 kHz bursts to synthetic audio.
-- **Upload acoustic sample** accepts a `.wav` file and decodes it with Librosa.
-- **Simulate Acoustic Data** creates a new synthetic signal using the selected profile and toggle state.
+- **1 · Source** – *Simulate* (machine profile, fault toggles, seed, **Generate signal**),
+  *Upload* (WAV/FLAC/OGG, multi-channel averaged to mono, 50 MB / 120 s limit) or
+  *Sample library* (the 15 labelled files in `data/samples`, with their purpose shown).
+- **2 · Configure** – sample rate, duration, noise level, burst amplitude, thresholds, teaching
+  demo boost. Every value lives in one `ExperimentConfig`; advanced parameters are in the
+  Experiment tab. The configuration hash is displayed so results can be traced.
+- **3 · Analyse** – the current signal is scored automatically whenever the configuration changes.
 
-### Metrics
+### Monitor tab
 
-- **Machine health status** is `HEALTHY`, `WARNING`, or `CRITICAL`.
-- **Anomaly score** is a demo score from 0–100%.
-- **Estimated RUL** is an illustrative remaining-useful-life value in days.
+- **Verdict banner** – state badge (`HEALTHY`, `WARNING`, `CRITICAL`, `CRITICAL (unconfirmed)`,
+  `INVALID`) and confidence badge, plus a one-sentence explanation naming the strongest evidence.
+- **Metrics** – anomaly score (with delta against the warn threshold), confidence, illustrative
+  RUL, sample rate / duration.
+- **Spectrogram** – linear-frequency STFT in dB with the diagnostic band shaded. Mel scaling was
+  dropped because it compresses 20-24 kHz into a few bins.
+- **Evidence channels** – horizontal bars of the weighted z-score per channel with the 50 %
+  line; the driver is highlighted.
+- **Detail plots** – PSD against the healthy baseline, envelope spectrum with the expected
+  BPFO line, waveform with detected impulses.
+- **Agent steps** – `st.status` timeline with real timestamps.
+- **Work order** – mock SAP S/4HANA PM payload and a simulated planner-approval button, shown
+  only for a confident CRITICAL verdict.
+- **Export** – run-log CSV, result JSON, NPZ bundle, WAV, PNG plots, approval audit log.
 
-### Signal analysis
+### Experiment tab
 
-The Mel-spectrogram shows acoustic energy over time. The simulator uses a 48 kHz sample rate, which supports frequencies up to 24 kHz under the Nyquist limit. This allows the synthetic 22 kHz fault bursts to appear in the high-frequency range.
+Advanced parameter form (bands, high-pass, Welch segment, envelope range, weights, std floors,
+z-centre / scale), YAML/JSON import and export, custom baseline from uploaded healthy
+recordings, one-parameter sweeps with fault/healthy score bands, and the session run log.
 
-### Agentic response
+### Batch tab
 
-When the score is greater than 75%, the UI displays:
+Score the bundled sample library or an uploaded folder with an optional manifest. Shows a per-file
+table, ROC AUC, average precision, precision/recall at the critical threshold, confusion counts and
+ROC / PR curves. Unlabelled or invalid files are excluded from the metrics but kept in the table.
 
-1. signal-received log;
-2. high-frequency-band isolation log;
-3. micro-crack confirmation log;
-4. threshold-exceeded log;
-5. maintenance-request creation log;
-6. mock SAP S/4HANA work-order JSON.
+### Methods tab
 
-The work order includes a ticket ID, material part number, suggested maintenance window, priority, anomaly score, and target system.
+The scoring rule, channel table and glossary, rendered from the live configuration.
 
 ## 3. Code reference
 
-The application is intentionally implemented in one file, [`app.py`](../app.py).
+The Streamlit file [`app.py`](../app.py) is a thin front-end. All logic is in the
+[`acoustic_agent`](../acoustic_agent/) package and is exercised by the CLI and the tests.
 
-| Function or section | Responsibility |
+| Module | Responsibility |
 | --- | --- |
-| `MACHINE_PROFILES` | Machine-specific frequencies, parts, RUL baselines, and descriptions |
-| `inject_styles` | Applies the dark industrial dashboard theme |
-| `generate_acoustic_data` | Builds sine-wave, harmonic, noise, and optional ultrasonic components |
-| `calculate_anomaly` | Computes FFT high-band energy and a deterministic demo score |
-| `health_for` | Maps score ranges to health states and UI colors |
-| `render_spectrogram` | Creates and renders the Librosa/Matplotlib Mel-spectrogram |
-| `sap_payload` | Creates the simulated SAP maintenance payload |
-| Streamlit session state | Preserves the current audio array and sample rate between reruns |
+| `config` | `MachineProfile`, `ExperimentConfig` (validation, YAML/JSON, `config_hash`), default weights and std floors |
+| `synth` | Deterministic synthetic signals: tonal base, ultrasonic bursts, bearing impacts, healthy references |
+| `features` | Welch PSD, band power / contrast, time-resolved band contrast, high-pass residual, kurtosis, crest factor, Hilbert envelope spectrum, impulse detection |
+| `validate` | Silence, short capture, band above Nyquist, clipping -> `Validity(valid, confidence, warnings, flags)` |
+| `detect` | `Baseline` calibration, per-channel z-scores with floors, weighted max, logistic score |
+| `decision` | Health state, explanation, recommended action, illustrative RUL, mock work-order payload |
+| `pipeline` | `analyze`, `run_batch`, `sweep` – the only entry points the UI and CLI call |
+| `metrics` | ROC / PR curves, AUC, precision / recall / F1 (NumPy only) |
+| `io` | Audio decoding with limits, WAV export, sample manifest, CSV / NPZ helpers |
+| `plots` | Matplotlib PNGs with a shared theme |
+| `cli` | `acoustic-agent analyze | batch | sweep | config | calibrate` |
 
 ## 4. End-to-end data flow
 
 ```mermaid
 sequenceDiagram
     participant User as Student or operator
-    participant UI as Streamlit UI
-    participant Audio as Audio pipeline
-    participant Model as Demo detector
-    participant Action as Action layer
+    participant UI as Streamlit UI / CLI
+    participant P as pipeline.analyze
+    participant F as features + validate
+    participant D as detect + decision
 
-    User->>UI: Select machine
-    User->>UI: Simulate or upload WAV
-    UI->>Audio: Create or decode samples
-    Audio-->>UI: Audio array and sample rate
-    UI->>Audio: Generate Mel-spectrogram
-    UI->>Model: Send audio and injection state
-    Model-->>UI: Score from 0 to 100%
-    UI->>UI: Compute health and illustrative RUL
-    alt score above 75%
-        UI->>Action: Build mock SAP payload
-        Action-->>UI: Work-order JSON
-    else score at or below 75%
-        UI-->>User: Show no-action state
+    User->>UI: Choose source, adjust ExperimentConfig
+    UI->>P: Signal + config (+ cached baseline)
+    P->>F: extract_features, assess_validity
+    F-->>P: FeatureSet, Validity
+    P->>D: score_features (z per channel, logistic)
+    D-->>P: Detection (score, driver, z by channel)
+    P->>D: decide (state, explanation, RUL)
+    D-->>P: Decision
+    P-->>UI: AnalysisResult with timestamped steps
+    alt CRITICAL and confidence >= min_confidence
+        UI-->>User: Work order + approval gate
+    else
+        UI-->>User: Verdict, evidence, warnings
     end
-    UI-->>User: Render metrics, plot, and logs
 ```
 
-## 5. Technical concepts to study
+## 5. Method
 
-### Sampling and Nyquist frequency
+### Features (all gain- and length-invariant)
 
-For sample rate `f_s`, the Nyquist frequency is:
+| Channel | Definition | Fires on |
+| --- | --- | --- |
+| `band_contrast_db` | Welch PSD in the diagnostic band (20-24 kHz) relative to the 14-18 kHz reference band | Narrow-band ultrasonic content; ≈ 0 dB for white noise of any level |
+| `band_contrast_transient_db` | 98th percentile minus median of the same contrast computed per ~20 ms STFT frame | Short bursts that whole-capture averaging dilutes, e.g. under heavy noise |
+| `band_power_db` | Diagnostic band relative to total power | Any high-frequency energy including broadband noise – weight 0 by default, shown for teaching |
+| `residual_kurtosis` | Kurtosis of the residual high-passed above 2 kHz (Gaussian = 3) | Repetitive impacts |
+| `residual_crest_factor` | Peak / RMS of the residual | Isolated impulses |
+| `envelope_peak_snr_db` | Prominence of the strongest line in the Hilbert-envelope spectrum (5-500 Hz) | Periodic bearing defects (BPFO / BPFI / BSF) |
+
+### Baseline and score
+
+Eight healthy synthetic renders of the selected profile (or user-supplied healthy recordings)
+give a mean and standard deviation per channel. The standard deviation is floored per unit so a
+near-deterministic synthetic baseline cannot explode z-scores.
 
 ```text
-f_N = f_s / 2
-48,000 / 2 = 24,000 Hz
+z_c   = max(0, (x_c - mean_c) / max(std_c, floor_c))
+z     = max_c  w_c * z_c
+score = 100 / (1 + exp(-(z - 3) / 1))
 ```
 
-The app uses 48 kHz so a 22 kHz component is representable. A lower-rate recording may lose or alias the fault signal.
+A 3σ excursion scores 50 %; ~4.1σ crosses the 75 % critical threshold. The strongest channel
+drives the verdict, so a bearing defect that is invisible above 20 kHz still alarms through the
+envelope spectrum, and the explanation names that channel.
 
-### Time and frequency domains
+### Validity gating
 
-The waveform describes amplitude over time. The FFT estimates how much energy exists at each frequency. Short bearing impacts may be hard to recognize from the waveform alone but become visible as high-frequency events in a spectrogram.
+| Check | Effect |
+| --- | --- |
+| RMS below silence floor | `INVALID`, no verdict |
+| Duration under 0.5 s | confidence × 0.5 |
+| Diagnostic band above Nyquist | confidence × 0.4; ultrasonic channels reported as unavailable |
+| Reference band above Nyquist | confidence × 0.7 |
+| Clipping fraction above 0.1 % | confidence × 0.6 |
 
-### Mel-spectrogram
+A critical score with confidence below 0.6 is `CRITICAL (unconfirmed)`: shown, explained, but
+not actionable.
 
-The application converts a Mel-scaled power spectrogram to decibels for visualization. This is an explanatory plot; the detector currently uses FFT magnitude above 20 kHz directly.
+### Teaching demo boost
 
-### Rule-based anomaly score
-
-The score is intentionally not a trained model. It uses:
-
-```text
-high_band_energy = mean(abs(rFFT(audio))[frequency > 20,000])
-score = clip(base_score + scaled_energy + optional_demo_boost, 0, 100)
-```
-
-The optional demo boost makes the toggle produce a repeatable critical path for classroom demonstrations.
+The sidebar toggle adds a fixed number of points *after* scoring. It is flagged in the
+explanation, run log, result JSON and work-order payload and must never be mistaken for a
+measurement.
 
 ## 6. Recommended lab sequence
 
-1. Run the healthy path and note all three metrics.
-2. Enable anomaly injection and simulate again.
-3. Compare the spectrograms and explain the high-frequency difference.
-4. Change a machine `base_frequency` and observe the lower-frequency signature.
-5. Change the threshold and discuss false-positive and false-negative trade-offs.
-6. Replace the demo boost with measured features.
-7. Add confidence, input validation, unit tests, and human approval.
+1. Generate a healthy signal; read the evidence chart – every bar should sit near zero.
+2. Inject 22 kHz bursts; observe `band_contrast_db` and `band_contrast_transient_db` firing.
+3. Inject bearing impacts; observe that the ultrasonic channels stay quiet while the envelope
+   spectrum shows a line at BPFO.
+4. Load `robotic_arm_healthy_noisy_48k.wav` and `robotic_arm_fault_noisy_48k.wav`; explain why
+   `band_power_db` would false-alarm and why the transient channel still separates them.
+5. Load `robotic_arm_fault_16k.wav`; explain the Nyquist warning and the unconfirmed state.
+6. Sweep `noise_std` in the Experiment tab and describe where separation collapses.
+7. Run the Batch tab on the sample library and interpret the ROC and PR curves.
+8. Calibrate a custom baseline from your own healthy recordings and re-score.
 
 ## 7. Questions for review or assessment
 
-- Why must the simulator use more than 40 kHz to represent a frequency above 20 kHz?
-- Why can a spectrogram reveal information that an average spectrum hides?
-- What makes a deterministic toggle useful for teaching but unsuitable as a production detector?
-- Which additional features could separate bearing damage from load changes or ambient noise?
-- Why should a real SAP write operation require authentication, audit logging, and a verified response?
-- How would you split train/test data to avoid leaking recordings from the same asset across both sets?
+- Why must the capture rate exceed 40 kHz to represent a 22 kHz signature?
+- Why does band contrast stay near 0 dB for white noise while band power does not?
+- Why can a per-frame statistic detect something that a whole-capture average hides?
+- What does a standard-deviation floor protect against, and how would you set it from real data?
+- Why is "strongest channel drives" preferable to a weighted sum for interpretability, and what
+  is its weakness?
+- Why should a real SAP write require authentication, audit logging and a verified response?
+- How would you split train/test data to avoid leaking recordings from the same asset?
 
 ## 8. Production-readiness boundary
 
-This MVP does not provide a safety-certified diagnosis, a calibrated RUL forecast, or a real SAP integration. A production implementation would need validated sensor hardware, asset-specific data, labeled failure history, model monitoring, confidence gating, human approval, secure credentials, API retries, idempotency, audit trails, and rollback procedures.
+This application does not provide a safety-certified diagnosis, a calibrated RUL forecast or a
+real SAP integration. A production implementation would need validated sensor hardware,
+asset-specific healthy data for the baseline, labelled failure history, model monitoring,
+secure credentials, API retries, idempotency, audit trails and rollback procedures.
 
 For deeper study, continue with:
 
 - [`architecture.md`](architecture.md) for system diagrams and production evolution;
 - [`engineering-student-guide.md`](engineering-student-guide.md) for exercises and responsible-engineering guidance;
-- [`README.md`](../README.md) for setup and deployment instructions.
+- [`README.md`](../README.md) for setup, CLI and validation commands.

@@ -2,8 +2,9 @@
 
 An educational, experiment-ready Streamlit application that turns an acoustic capture into a
 machine-health decision for rotating equipment (robotic arm bearings, stamping press, conveyor
-drive). Version 0.2.0 replaces the original single-file demo with a tested Python package, a
-baseline-calibrated detector, validity gating, configuration management and batch evaluation.
+drive). Version 0.3.0 adds persistent SQLite run history, per-asset trends, structured audit
+export, and container/Render deployment packaging on top of the tested Python package,
+baseline-calibrated detector, validity gating and batch evaluation from 0.2.0.
 
 > This is a simulation for study and prototyping. It does not connect to a real sensor, a
 > production ML model or an SAP S/4HANA tenant. Every synthetic fault is a physical change to
@@ -32,8 +33,9 @@ baseline-calibrated detector, validity gating, configuration management and batc
   with ROC / precision-recall metrics, a session run log and full export (CSV, JSON, NPZ, WAV,
   PNG).
 - **Decision integrity**: mock SAP S/4HANA PM payload with UUID-derived ticket id, real
-  timestamps, configuration hash, feature version and a simulated planner-approval gate.
-- **Headless CLI** for scripted studies: `acoustic-agent analyze | batch | sweep | config | calibrate`.
+  timestamps, configuration hash, feature version and a simulated planner-approval gate;
+  SQLite-backed history across sessions with per-asset score trends and JSONL/CSV audit export.
+- **Headless CLI** for scripted studies: `acoustic-agent analyze | batch | sweep | config | calibrate | history | audit`.
 
 ## Run locally
 
@@ -54,10 +56,12 @@ Then open `http://localhost:8501`.
 
 ```bash
 uv run acoustic-agent analyze --synthetic --inject-bursts
-uv run acoustic-agent analyze data/samples/bearing_outer_race_fault_48k.wav --json
+uv run acoustic-agent analyze data/samples/bearing_outer_race_fault_48k.wav --json --persist
 uv run acoustic-agent batch data/samples --out results.csv
 uv run acoustic-agent sweep --parameter noise_std --values 0.01,0.05,0.1,0.2
 uv run acoustic-agent config --export my_experiment.yaml
+uv run acoustic-agent history --asset "Robotic Arm Bearings"
+uv run acoustic-agent audit --format jsonl --out audit.jsonl
 ```
 
 ## How to use the app
@@ -72,14 +76,15 @@ uv run acoustic-agent config --export my_experiment.yaml
 4. **Experiment tab**: edit every parameter, import/export a configuration, calibrate a custom
    baseline from healthy recordings, run a sweep, inspect the run log.
 5. **Batch tab**: score the sample library or your own labelled folder and read ROC / PR curves.
-6. **Methods tab**: the full scoring rule, channel definitions and glossary.
+6. **History tab**: persistent run table, per-asset score trend, structured audit export.
+7. **Methods tab**: the full scoring rule, channel definitions and glossary.
 
 ## Project map
 
 | Path | Purpose |
 | --- | --- |
 | [`app.py`](app.py) | Streamlit front-end (thin layer over the package) |
-| [`acoustic_agent/`](acoustic_agent/) | UI-agnostic package: `config`, `synth`, `features`, `validate`, `detect`, `decision`, `io`, `metrics`, `pipeline`, `plots`, `cli` |
+| [`acoustic_agent/`](acoustic_agent/) | UI-agnostic package: `config`, `synth`, `features`, `validate`, `detect`, `decision`, `io`, `metrics`, `pipeline`, `plots`, `store`, `cli` |
 | [`tests/`](tests/) | Unit tests for every module plus Streamlit `AppTest` smoke tests |
 | [`scripts/generate_sample_wavs.py`](scripts/generate_sample_wavs.py) | Deterministic generator for the labelled sample WAV test set |
 | [`data/samples/`](data/samples/README.md) | 15 labelled test WAVs, `manifest.csv`, and a survey of public bearing/machine-sound datasets |
@@ -92,6 +97,21 @@ uv run acoustic-agent config --export my_experiment.yaml
 | [`docs/notes/`](docs/notes/) | Markdown mirrors of the Notion session, decision and research notes |
 | [`docs/notion-sync.md`](docs/notion-sync.md) | Index mapping every repo document to its Notion page |
 | [`CHANGELOG.md`](CHANGELOG.md) / [`CITATION.cff`](CITATION.cff) | Release history and citation metadata |
+
+
+## Deploy
+
+- **Streamlit Community Cloud** (current live demo): connect the repo, entry point `app.py`,
+  Python 3.12, install from `requirements.txt` (already pinned).
+- **Docker / Render**: `docker build -t acoustic-agent .` then
+  `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`. Optional Blueprint:
+  [`render.yaml`](render.yaml). The process binds `0.0.0.0:$PORT` via
+  [`scripts/run_server.sh`](scripts/run_server.sh).
+- **Ephemeral filesystem**: free Streamlit Cloud and Render disks lose local writes on
+  restart. SQLite history (`ACOUSTIC_AGENT_DATA_DIR`) is best-effort on those hosts; download
+  History / audit exports for durable records, or mount a persistent volume.
+
+Upload limits (also in `.streamlit/config.toml` and `acoustic_agent.io`): 50 MB / 120 s.
 
 ## Validation
 

@@ -155,6 +155,7 @@ it with `decision.work_order_payload`.
 
 1. Real-data loaders (MAFAULDA CSV, CWRU `.mat`) so the Batch tab can score public datasets.
 2. Learned detector (isolation forest or autoencoder on the same feature vector) compared against the rule on ROC.
-3. Time-series history of scores per asset with trend-based warnings.
+3. ~~Time-series history of scores per asset with trend-based warnings.~~ Done in v0.3.0 (History tab + `RunStore`); next step is trend-based *warnings* (alert when slope crosses a threshold).
 4. A real SAP adapter behind an environment-configured API client with retries and idempotency keys.
-5. Authentication, secrets management, rate limits and structured audit logging before any production deployment.
+5. Authentication, secrets management and rate limits before any production deployment (structured audit logging ships in v0.3.0).
+6. Deploy with a persistent volume (`ACOUSTIC_AGENT_DATA_DIR`) so SQLite history survives restarts on Render / Streamlit Cloud.

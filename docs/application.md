@@ -50,7 +50,7 @@ supporting evidence, and reviewing a proposed SAP S/4HANA maintenance action.
 - **Agent steps** – `st.status` timeline with real timestamps.
 - **Work order** – mock SAP S/4HANA PM payload and a simulated planner-approval button, shown
   only for a confident CRITICAL verdict.
-- **Export** – run-log CSV, result JSON, NPZ bundle, WAV, PNG plots, approval audit log.
+- **Export** – run-log CSV, result JSON, NPZ bundle, WAV, PNG plots, session approvals, persistent audit JSONL.
 
 ### Experiment tab
 
@@ -63,6 +63,13 @@ recordings, one-parameter sweeps with fault/healthy score bands, and the session
 Score the bundled sample library or an uploaded folder with an optional manifest. Shows a per-file
 table, ROC AUC, average precision, precision/recall at the critical threshold, confusion counts and
 ROC / PR curves. Unlabelled or invalid files are excluded from the metrics but kept in the table.
+
+### History tab
+
+SQLite-backed run history across sessions (path from `ACOUSTIC_AGENT_DATA_DIR`), per-asset score
+trend with warn/critical guides, structured audit events (analyses + approvals), and CSV/JSONL
+export. On ephemeral hosts the file is lost on restart unless a volume is mounted; downloads remain
+the durable record.
 
 ### Methods tab
 
@@ -84,8 +91,9 @@ The Streamlit file [`app.py`](../app.py) is a thin front-end. All logic is in th
 | `pipeline` | `analyze`, `run_batch`, `sweep` – the only entry points the UI and CLI call |
 | `metrics` | ROC / PR curves, AUC, precision / recall / F1 (NumPy only) |
 | `io` | Audio decoding with limits, WAV export, sample manifest, CSV / NPZ helpers |
+| `store` | SQLite run history and structured audit log (`ACOUSTIC_AGENT_DATA_DIR`) |
 | `plots` | Matplotlib PNGs with a shared theme |
-| `cli` | `acoustic-agent analyze | batch | sweep | config | calibrate` |
+| `cli` | `acoustic-agent analyze | batch | sweep | config | calibrate | history | audit` |
 
 ## 4. End-to-end data flow
 

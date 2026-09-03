@@ -6,7 +6,7 @@ front-ends over :func:`acoustic_agent.pipeline.analyze`.
 
 from __future__ import annotations
 
-__version__ = "0.2.0"
+__version__ = "0.3.0"
 
 # Bump whenever the feature definitions or scoring rule change so that stored results
 # can be told apart. Recorded in every run-log row and work-order payload.

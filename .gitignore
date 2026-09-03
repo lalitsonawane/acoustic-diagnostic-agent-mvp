@@ -14,3 +14,8 @@ htmlcov/
 .pytest_cache/
 .mypy_cache/
 .ruff_cache/
+
+# local / test SQLite history
+*.sqlite3
+tests/.tmp_acoustic_agent_data/
+

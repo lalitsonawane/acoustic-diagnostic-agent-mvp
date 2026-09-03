@@ -8,6 +8,8 @@ Examples
     acoustic-agent sweep --parameter burst_amplitude --values 0,0.05,0.1,0.2,0.42
     acoustic-agent config --export experiment.yaml
     acoustic-agent calibrate --config experiment.yaml
+    acoustic-agent history --asset "Robotic Arm Bearings"
+    acoustic-agent audit --format jsonl --out audit.jsonl
 """
 
 from __future__ import annotations
@@ -23,6 +25,7 @@ from acoustic_agent.config import ExperimentConfig, config_hash, sweepable_param
 from acoustic_agent.detect import calibrate_baseline
 from acoustic_agent.io import AudioLoadError, labels_from_manifest_text, load_audio, load_sample_manifest, rows_to_csv
 from acoustic_agent.pipeline import AnalysisResult, analyze, run_batch, sweep
+from acoustic_agent.store import RunStore, default_db_path
 from acoustic_agent.synth import Signal, synthesize
 
 
@@ -60,6 +63,10 @@ def _print_result(result: AnalysisResult, as_json: bool) -> None:
         print(f"warning       : {warning}")
 
 
+def _store_from_args(args: argparse.Namespace) -> RunStore:
+    return RunStore(Path(args.db) if getattr(args, "db", None) else None)
+
+
 def cmd_analyze(args: argparse.Namespace) -> int:
     cfg = _load_config(args)
     if args.synthetic:
@@ -74,6 +81,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
             print(f"error: {exc}", file=sys.stderr)
             return 1
     result = analyze(signal, cfg)
+    if getattr(args, "persist", False):
+        row = result.summary_row({"baseline": result.baseline.source})
+        run_id = _store_from_args(args).append_run(row)
+        db = args.db if getattr(args, "db", None) else str(default_db_path())
+        print(f"persisted run id {run_id} -> {db}", file=sys.stderr)
     _print_result(result, args.json)
     return 0
 
@@ -161,6 +173,52 @@ def cmd_calibrate(args: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_history(args: argparse.Namespace) -> int:
+    store = _store_from_args(args)
+    if args.assets:
+        for name in store.assets():
+            print(name)
+        return 0
+    if args.trend:
+        points = store.asset_trend(args.trend, limit=args.limit)
+        rows = [
+            {
+                "analysed_at": p.analysed_at,
+                "score": p.score,
+                "state": p.state,
+                "confidence": p.confidence,
+                "source": p.source,
+                "run_id": p.run_id,
+            }
+            for p in points
+        ]
+    else:
+        rows = store.list_runs(asset=args.asset, limit=args.limit)
+    text = json.dumps(rows, indent=2, default=str) if args.json else rows_to_csv(rows)
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"wrote {args.out} ({len(rows)} rows)")
+    else:
+        print(text, end="" if not args.json else "\n")
+    return 0
+
+
+def cmd_audit(args: argparse.Namespace) -> int:
+    store = _store_from_args(args)
+    if args.format == "jsonl":
+        text = store.export_audit_jsonl(limit=args.limit)
+    elif args.format == "csv":
+        text = store.export_audit_csv(limit=args.limit)
+    else:
+        text = json.dumps(store.list_audit_events(event_type=args.type, limit=args.limit), indent=2, default=str) + "\n"
+    if args.out:
+        Path(args.out).write_text(text, encoding="utf-8")
+        print(f"wrote {args.out}")
+    else:
+        print(text, end="")
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="acoustic-agent", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
@@ -171,13 +229,18 @@ def build_parser() -> argparse.ArgumentParser:
         p.add_argument("--profile", choices=["Robotic Arm Bearings", "Stamping Press", "Conveyor Drive"])
         p.add_argument("--seed", type=int)
 
+    def add_db(p: argparse.ArgumentParser) -> None:
+        p.add_argument("--db", help=f"SQLite path (default: {default_db_path()})")
+
     p = sub.add_parser("analyze", help="Score one WAV file or a synthetic signal")
     add_common(p)
+    add_db(p)
     p.add_argument("path", nargs="?", help="Path to a WAV/FLAC/OGG file")
     p.add_argument("--synthetic", action="store_true", help="Analyse a synthetic render instead of a file")
     p.add_argument("--inject-bursts", action="store_true", help="Synthetic: add 22 kHz micro-crack bursts")
     p.add_argument("--inject-bearing", action="store_true", help="Synthetic: add outer-race bearing impacts")
     p.add_argument("--json", action="store_true", help="Emit the full result as JSON")
+    p.add_argument("--persist", action="store_true", help="Append the summary row to the SQLite history store")
     p.set_defaults(func=cmd_analyze)
 
     p = sub.add_parser("batch", help="Score a directory (or file) and compute ROC/PR metrics")
@@ -206,6 +269,24 @@ def build_parser() -> argparse.ArgumentParser:
     p = sub.add_parser("calibrate", help="Print the synthetic healthy baseline statistics")
     add_common(p)
     p.set_defaults(func=cmd_calibrate)
+
+    p = sub.add_parser("history", help="List or export persisted analysis runs")
+    add_db(p)
+    p.add_argument("--asset", help="Filter by machine profile / asset name")
+    p.add_argument("--trend", help="Emit chronological score trend for one asset")
+    p.add_argument("--assets", action="store_true", help="List distinct asset names")
+    p.add_argument("--limit", type=int, default=500)
+    p.add_argument("--json", action="store_true")
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_history)
+
+    p = sub.add_parser("audit", help="Export the structured audit log (analyses + approvals)")
+    add_db(p)
+    p.add_argument("--format", choices=["jsonl", "csv", "json"], default="jsonl")
+    p.add_argument("--type", help="Filter by event_type (analysis, approval, …)")
+    p.add_argument("--limit", type=int, default=10_000)
+    p.add_argument("--out")
+    p.set_defaults(func=cmd_audit)
     return parser
 
 

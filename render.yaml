@@ -1,0 +1,20 @@
+# Render Blueprint — optional alternative to Streamlit Community Cloud.
+# Docs: https://render.com/docs/blueprint-spec
+# Port binding: process listens on 0.0.0.0:$PORT (see scripts/run_server.sh).
+# Ephemeral filesystem: SQLite history is lost on restart unless you attach a
+# disk and point ACOUSTIC_AGENT_DATA_DIR at the mount. Prefer CSV/JSONL exports
+# for durable experiment records on the free plan.
+
+services:
+  - type: web
+    name: acoustic-diagnostic-agent
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /_stcore/health
+    envVars:
+      - key: ACOUSTIC_AGENT_DATA_DIR
+        value: /tmp/acoustic_agent
+      - key: PYTHONUNBUFFERED
+        value: "1"

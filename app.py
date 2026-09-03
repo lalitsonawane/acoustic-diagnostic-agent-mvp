@@ -46,6 +46,7 @@ from acoustic_agent.plots import (
     spectrogram_png,
     waveform_png,
 )
+from acoustic_agent.store import RunStore, default_db_path
 from acoustic_agent.synth import Signal, healthy_reference, synthesize
 
 st.set_page_config(
@@ -118,6 +119,12 @@ def cached_manifest() -> list[SampleEntry]:
 @st.cache_data(show_spinner=False, max_entries=64)
 def cached_sample(path: str) -> Signal:
     return load_audio(path)
+
+
+@st.cache_resource(show_spinner=False)
+def get_run_store() -> RunStore:
+    """One SQLite store per process. Path follows ``ACOUSTIC_AGENT_DATA_DIR`` when set."""
+    return RunStore()
 
 
 def init_state() -> None:
@@ -208,8 +215,13 @@ def log_run(result: AnalysisResult) -> None:
     key = (result.signal.source, config_hash(result.config), result.baseline.source)
     if st.session_state.last_logged_key == key:
         return
-    st.session_state.run_log.append(result.summary_row({"baseline": result.baseline.source}))
+    row = result.summary_row({"baseline": result.baseline.source})
+    st.session_state.run_log.append(row)
     st.session_state.last_logged_key = key
+    try:
+        get_run_store().append_run(row)
+    except OSError as exc:  # pragma: no cover - disk full / read-only FS
+        st.session_state.store_error = f"Could not persist run history: {exc}"
 
 
 # ----------------------------------------------------------------------------------
@@ -398,7 +410,7 @@ if st.session_state.pop("first_run", False):
         icon=":material/lightbulb:",
     )
 
-tab_monitor, tab_experiment, tab_batch, tab_methods = st.tabs(["Monitor", "Experiment", "Batch", "Methods"])
+tab_monitor, tab_experiment, tab_batch, tab_history, tab_methods = st.tabs(["Monitor", "Experiment", "Batch", "History", "Methods"])
 
 # ---------------------------------------------------------------- Monitor -----------
 with tab_monitor:
@@ -491,9 +503,16 @@ with tab_monitor:
             st.json(payload, expanded=False)
             approved_ids = {a["ticket_id"] for a in st.session_state.approvals}
             if st.button("Approve work order (simulated planner gate)", key="approve", icon=":material/how_to_reg:", width="stretch"):
-                st.session_state.approvals.append(
-                    {**payload, "approved_at": datetime.now(UTC).isoformat(timespec="seconds"), "status": "APPROVED (simulated)"}
-                )
+                record = {
+                    **payload,
+                    "approved_at": datetime.now(UTC).isoformat(timespec="seconds"),
+                    "status": "APPROVED (simulated)",
+                }
+                st.session_state.approvals.append(record)
+                try:
+                    get_run_store().append_approval(record)
+                except OSError as exc:  # pragma: no cover
+                    st.session_state.store_error = f"Could not persist approval: {exc}"
                 st.toast("Work order approved in the simulated audit log", icon=":material/check:")
             if approved_ids:
                 st.caption(f"{len(approved_ids)} simulated approval(s) recorded this session.")
@@ -536,10 +555,19 @@ with tab_monitor:
             )
         if st.session_state.approvals:
             st.download_button(
-                "Approval audit log JSON",
+                "Session approvals JSON",
                 json.dumps(st.session_state.approvals, indent=2),
                 file_name="approvals.json",
                 mime="application/json",
+            )
+        store = get_run_store()
+        if store.run_count() or store.list_audit_events(limit=1):
+            st.download_button(
+                "Persistent audit log (JSONL)",
+                store.export_audit_jsonl(),
+                file_name="audit_log.jsonl",
+                mime="application/x-ndjson",
+                help="Structured audit trail from the on-disk SQLite store (analyses + approvals).",
             )
 
 # ---------------------------------------------------------------- Experiment --------
@@ -811,6 +839,129 @@ with tab_batch:
         st.download_button("Batch results CSV", rows_to_csv(batch.rows), file_name="batch_results.csv", mime="text/csv")
 
     batch_tool(config_json, json.dumps(baseline.to_dict()))
+
+# ---------------------------------------------------------------- History -----------
+with tab_history:
+    st.subheader("Persistent run history")
+    store = get_run_store()
+    st.caption(
+        f"SQLite store at `{default_db_path()}`. Survives browser reloads on this host. "
+        "On Streamlit Cloud / Render free tiers the filesystem is ephemeral unless you mount a disk "
+        "and set `ACOUSTIC_AGENT_DATA_DIR`; download the audit export for a durable record."
+    )
+    if err := st.session_state.pop("store_error", None):
+        st.warning(err)
+
+    n_runs = store.run_count()
+    assets = store.assets()
+    m1, m2, m3 = st.columns(3)
+    m1.metric("Stored runs", n_runs, border=True)
+    m2.metric("Assets", len(assets), border=True)
+    m3.metric("Audit events", len(store.list_audit_events(limit=10_000)), border=True)
+
+    if n_runs == 0:
+        st.info("No persisted analyses yet. Generate or upload a signal on the Monitor tab.", icon=":material/history:")
+    else:
+        asset_choice = st.selectbox("Asset for trend", ["(all)", *assets], key="history_asset")
+        filter_asset = None if asset_choice == "(all)" else asset_choice
+
+        if filter_asset:
+            trend = store.asset_trend(filter_asset)
+            if trend:
+                st.subheader(f"Score trend — {filter_asset}")
+                trend_df = pd.DataFrame(
+                    [
+                        {
+                            "analysed_at": p.analysed_at,
+                            "score": p.score,
+                            "state": p.state,
+                            "confidence": p.confidence,
+                            "source": p.source,
+                        }
+                        for p in trend
+                    ]
+                )
+                line = (
+                    alt.Chart(trend_df)
+                    .mark_line(point=True)
+                    .encode(
+                        x=alt.X("analysed_at:T", title="Analysed at"),
+                        y=alt.Y("score:Q", title="Anomaly score (%)", scale=alt.Scale(domain=[0, 100])),
+                        color=alt.Color("state:N", title="State"),
+                        tooltip=["analysed_at:T", "score:Q", "state:N", "confidence:Q", "source:N"],
+                    )
+                )
+                warn_rule = (
+                    alt.Chart(pd.DataFrame({"y": [config.warn_threshold]})).mark_rule(strokeDash=[4, 4], color="#ffb454").encode(y="y:Q")
+                )
+                crit_rule = (
+                    alt.Chart(pd.DataFrame({"y": [config.critical_threshold]}))
+                    .mark_rule(strokeDash=[4, 4], color="#ff6b6b")
+                    .encode(y="y:Q")
+                )
+                st.altair_chart(line + warn_rule + crit_rule, width="stretch")
+                if len(trend) >= 2:
+                    delta = trend[-1].score - trend[0].score
+                    st.caption(
+                        f"Latest {trend[-1].score:.1f} % vs first {trend[0].score:.1f} % ({delta:+.1f} points over {len(trend)} runs)."
+                    )
+
+        hist_rows = store.list_runs(asset=filter_asset, limit=200)
+        if hist_rows:
+            show = [
+                "analysed_at",
+                "asset",
+                "source",
+                "state",
+                "score",
+                "confidence",
+                "driver",
+                "config_hash",
+                "feature_version",
+                "baseline",
+            ]
+            st.dataframe(pd.DataFrame(hist_rows)[[c for c in show if c in hist_rows[0]]], hide_index=True, width="stretch")
+
+        st.subheader("Structured audit log")
+        audit = store.list_audit_events(limit=200)
+        if audit:
+            audit_flat = [
+                {
+                    "event_at": e["event_at"],
+                    "event_type": e["event_type"],
+                    "ticket_id": e.get("ticket_id"),
+                    "asset": e.get("asset"),
+                    "actor": e.get("actor"),
+                }
+                for e in audit
+            ]
+            st.dataframe(pd.DataFrame(audit_flat), hide_index=True, width="stretch")
+
+        x1, x2, x3, x4 = st.columns(4)
+        x1.download_button(
+            "History CSV",
+            store.export_runs_csv(asset=filter_asset),
+            file_name="history.csv",
+            mime="text/csv",
+            width="stretch",
+        )
+        x2.download_button(
+            "Audit JSONL",
+            store.export_audit_jsonl(),
+            file_name="audit_log.jsonl",
+            mime="application/x-ndjson",
+            width="stretch",
+        )
+        x3.download_button(
+            "Audit CSV",
+            store.export_audit_csv(),
+            file_name="audit_log.csv",
+            mime="text/csv",
+            width="stretch",
+        )
+        if x4.button("Clear persistent history", icon=":material/delete:", width="stretch"):
+            store.clear()
+            st.rerun()
 
 # ---------------------------------------------------------------- Methods -----------
 with tab_methods:

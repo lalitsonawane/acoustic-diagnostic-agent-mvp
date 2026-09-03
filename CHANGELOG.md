@@ -4,6 +4,27 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [0.3.0] - 2026-09-03
+
+Phase 3 remainder (decision integrity / persistence) and Phase 4 (deployment hardening).
+
+### Added
+- SQLite `RunStore` (`acoustic_agent/store.py`): persistent analysis history and structured
+  audit events (analyses + planner approvals) across Streamlit sessions on the same host.
+  Path via `ACOUSTIC_AGENT_DATA_DIR` (default `~/.cache/acoustic_agent/history.sqlite3`).
+- **History** tab: per-asset score trend chart with warn/critical guides, stored run table,
+  audit event table, CSV / JSONL exports, and clear-history control.
+- CLI `history` and `audit` commands; `analyze --persist` writes into the same store.
+- Deployment packaging: `Dockerfile` (Python 3.12, `libsndfile`, health check on
+  `/_stcore/health`), `scripts/run_server.sh` binding `0.0.0.0:$PORT`, optional
+  `render.yaml` Blueprint. Documented ephemeral filesystem behaviour (exports are the
+  durable record unless a disk is mounted).
+
+### Changed
+- Session approval download renamed to "Session approvals JSON"; Export also offers the
+  persistent audit JSONL when the store has events.
+- Version metadata (`pyproject.toml`, `CITATION.cff`) bumped to 0.3.0.
+
 ## [0.2.0] - 2026-09-02
 
 Professionalisation and experiment-readiness release (plan phases 0-2 plus the UI upgrade).

@@ -7,7 +7,7 @@
 | Type | Session summary |
 | Status | Active |
 | Session date | 2026-09-02 |
-| Last reviewed | 2026-09-02 |
+| Last reviewed | 2026-09-03 |
 | Keywords | Streamlit, Signal processing, Testing, CI, Cursor |
 | Source / context | Cursor agent session implementing the [professionalization plan](2026-09-02-professionalization-and-experiment-readiness-plan.md) on branch `feat/professionalize-phases-0-2` of [github.com/lalitsonawane/acoustic-diagnostic-agent-mvp](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp). |
 
@@ -62,13 +62,11 @@ confidence, 16 kHz is *unconfirmed*, silence is *INVALID*).
 
 ## Open follow-ups
 
-- Phase 3 remainder: persistent run history across sessions (SQLite or object storage), per-asset
-  trend view, structured audit log export beyond the session.
-- Phase 4: deployment hardening (Streamlit Cloud redeploy from `main` after merge; verify
-  `requirements.txt` pins install on Python 3.12 there).
+- ~~Phase 3 remainder: persistent run history / trends / audit export.~~ Done in v0.3.0 — see [2026-09-03 phases 3–4 note](2026-09-03-phases-3-4-persistence-and-deployment.md).
+- ~~Phase 4: deployment packaging (Docker / Render / `0.0.0.0:$PORT`).~~ Done in v0.3.0; Streamlit Cloud redeploy from `main` still pending after merge.
 - Real-data loaders (MAFAULDA CSV, CWRU `.mat`) so the Batch tab can score public datasets.
 - Consider a learned detector on the same feature vector for an ROC comparison.
-- Merge PR #2 after CI is green.
+- ~~Merge PR #2 after CI is green.~~ Merged.
 
 Notion mirrors of the five changed docs (README, application, architecture, student guide,
 samples README) were refreshed in this session and the plan page carries an "Implemented" banner.

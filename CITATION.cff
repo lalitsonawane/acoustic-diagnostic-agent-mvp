@@ -2,8 +2,8 @@ cff-version: 1.2.0
 message: "If you use this software in teaching or research, please cite it as below."
 type: software
 title: "Acoustic Diagnostic Agent: baseline-calibrated acoustic anomaly detection MVP"
-version: 0.2.0
-date-released: 2026-09-02
+version: 0.3.0
+date-released: 2026-09-03
 license: MIT
 repository-code: "https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp"
 url: "https://lalitsonawane-acoustic-diagnostic-agent-mvp-app-5t3rdo.streamlit.app/"

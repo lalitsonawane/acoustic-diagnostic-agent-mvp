@@ -9,7 +9,7 @@
 | Session date | 2026-09-03 |
 | Last reviewed | 2026-09-03 |
 | Keywords | Architecture, Cursor, GitHub |
-| Source / context | Cursor cloud agent implementing remaining plan phases on branch `lalit_cursor/phases-3-4-decision-deploy-b27b` of [github.com/lalitsonawane/acoustic-diagnostic-agent-mvp](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp). |
+| Source / context | Cursor cloud agent Plan B Render free deploy; docs on branch `lalit_cursor/render-free-deploy-docs-b27b` of [github.com/lalitsonawane/acoustic-diagnostic-agent-mvp](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp). |
 
 ## Outcome
 
@@ -40,9 +40,9 @@ tab with per-asset score trends and JSONL/CSV audit export, CLI `history` / `aud
 - Validation: `uv run ruff check && ruff format --check && mypy && pytest` (all green).
 - Notion: https://app.notion.com/p/3d089f54d2c281fcab56d6e65fa32fd6
 
-## Deploy decision (2026-09-03) — practical choice
+## Deploy decision (2026-09-03) — practical choice (superseded for public demo)
 
-| Platform | Decision | Why |
+| Platform | Decision (morning) | Why |
 | --- | --- | --- |
 | **Streamlit Community Cloud** | Primary live host | Already running; least ops; correct runtime for Streamlit |
 | **Vercel** | Keep as redirect only | Git check stays green; does not run Streamlit/Docker |
@@ -50,11 +50,36 @@ tab with per-asset score trends and JSONL/CSV audit export, CLI `history` / `aud
 
 **Owner manual step:** Streamlit Community Cloud **Reboot done** (2026-09-03, owner confirmed). Expected smoke-test while logged in: Simulate → Generate → History → audit download.
 
-**Verified from agent environment after reboot:** Vercel production still responds with `307` to the Streamlit URL. Unauthenticated probes of the Streamlit URL still return `303` to Streamlit login — the app is reachable but **not anonymously public**. If the demo should open without Streamlit login, set visibility to **Public** in Streamlit Cloud settings.
+**Verified from agent environment after reboot:** Unauthenticated probes of the Streamlit URL still return `303` to Streamlit login — reachable but **not anonymously public**.
+
+## Plan B — Render free Docker live (2026-09-03)
+
+Owner chose Plan B (Render free plan) and supplied a Render API key for agent provisioning.
+
+| Platform | Decision (Plan B) | Why |
+| --- | --- | --- |
+| **Render** | **Primary public demo** | Anonymous access; Docker matches repo packaging; free tier |
+| **Vercel** | Redirect → Render | Public path without Streamlit login gate |
+| **Streamlit Community Cloud** | Alternate / owner login | Still useful; optional Public setting |
+
+**Provisioned service**
+
+- Name: `acoustic-diagnostic-agent`
+- URL: https://acoustic-diagnostic-agent.onrender.com
+- Dashboard: https://dashboard.render.com/web/srv-dacr9d2d0e5s738977f0
+- Runtime: Docker from `main`, Oregon, free plan
+- Health: `/_stcore/health` → `200 ok`
+- Env: `ACOUSTIC_AGENT_DATA_DIR=/tmp/acoustic_agent`, `PYTHONUNBUFFERED=1`
+- First deploy `dep-dacr9did0e5s738978g0` live (~1.5 min) on commit `cbc0b9f`
+
+**Caveats (accepted):** free-tier spin-down after ~15 min idle (cold start); ephemeral FS so History/SQLite is not durable across restarts.
+
+**Security:** API key was shared in chat for provisioning — **rotate** it in the Render dashboard after this session; do not commit keys.
 
 ## Open follow-ups
 
-- Optional: set Streamlit Cloud app to **Public** if anonymous demo access is wanted (still gated after reboot).
-- Render left optional; activate only if a second Docker host or persistent disk is wanted.
+- Rotate the Render API key that was pasted into chat.
+- Optional: set Streamlit Cloud app to **Public** if that alternate should also be anonymous.
+- Optional: attach a Render persistent disk if durable History on the free host is wanted.
 - Trend-based *warnings* (alert when score slope crosses a threshold) still open.
 - Real-data loaders (MAFAULDA / CWRU) and learned-detector ROC comparison remain backlog.

@@ -13,7 +13,7 @@ baseline-calibrated detector, validity gating and batch evaluation from 0.2.0.
 
 ## Live demo
 
-[Open the deployed Streamlit Community Cloud app](https://lalitsonawane-acoustic-diagnostic-agent-mvp-app-5t3rdo.streamlit.app/)
+[Open the deployed Render app](https://acoustic-diagnostic-agent.onrender.com/)
 
 ## What it does
 
@@ -101,18 +101,21 @@ uv run acoustic-agent audit --format jsonl --out audit.jsonl
 
 ## Deploy
 
-**Practical default:** Streamlit Community Cloud runs the app; Vercel only redirects; Render/Docker
-is optional packaging left inactive unless you want a second host.
+**Live hosts:** Render (public Docker free tier) is the anonymous demo; Streamlit Community Cloud
+remains an alternate; Vercel only redirects to Render.
 
-- **Streamlit Community Cloud** (live demo): repo → entry `app.py` → Python **3.12** →
-  `requirements.txt`. After merges to `main`, reboot the app (or rely on auto-deploy) and
-  confirm it is **Public** if the demo should not require Streamlit login.
-- **Vercel**: static redirect to the Streamlit URL (`vercel.json` + `public/`). Do not point
+- **Render** (primary public demo): [https://acoustic-diagnostic-agent.onrender.com](https://acoustic-diagnostic-agent.onrender.com/)
+  — Docker web service from [`Dockerfile`](Dockerfile) / [`render.yaml`](render.yaml), binds
+  `0.0.0.0:$PORT` via [`scripts/run_server.sh`](scripts/run_server.sh), health check
+  `/_stcore/health`, `ACOUSTIC_AGENT_DATA_DIR=/tmp/acoustic_agent`. Free tier spins down after
+  ~15 minutes idle (cold start on next visit). Dashboard:
+  [srv-dacr9d2d0e5s738977f0](https://dashboard.render.com/web/srv-dacr9d2d0e5s738977f0).
+- **Streamlit Community Cloud** (alternate): repo → entry `app.py` → Python **3.12** →
+  `requirements.txt`. Set visibility to **Public** if the demo should not require Streamlit login.
+- **Vercel**: static redirect to the Render URL (`vercel.json` + `public/`). Do not point
   Vercel at the Dockerfile for this Streamlit UI.
-- **Docker / Render** (optional): `docker build -t acoustic-agent .` then
-  `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`. Blueprint:
-  [`render.yaml`](render.yaml). Binds `0.0.0.0:$PORT` via
-  [`scripts/run_server.sh`](scripts/run_server.sh).
+- **Local Docker**: `docker build -t acoustic-agent .` then
+  `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`.
 - **Ephemeral filesystem**: free Streamlit Cloud and Render disks lose local writes on
   restart. SQLite history (`ACOUSTIC_AGENT_DATA_DIR`) is best-effort on those hosts; download
   History / audit exports for durable records, or mount a persistent volume.

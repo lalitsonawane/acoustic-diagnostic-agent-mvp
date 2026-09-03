@@ -82,3 +82,12 @@ def test_widget_values_survive_mode_switch(at: AppTest):
     assert not at.exception
     assert at.session_state["cfg"]["inject_bursts"] is True
     assert at.toggle(key="w_inject_bursts").value is True
+
+
+def test_runs_are_persisted_to_sqlite(at: AppTest):
+    from acoustic_agent.store import RunStore, default_db_path
+
+    store = RunStore(default_db_path())
+    assert store.run_count() >= 1
+    assert store.list_runs()[0]["state"] == "HEALTHY"
+    assert any(e["event_type"] == "analysis" for e in store.list_audit_events())

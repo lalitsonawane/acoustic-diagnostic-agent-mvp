@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "acoustic-diagnostic-agent"
-version = "0.2.0"
+version = "0.3.0"
 description = "Acoustic condition-monitoring MVP: baseline-calibrated anomaly detection with a Streamlit front-end and headless CLI"
 readme = "README.md"
 license = { file = "LICENSE" }
@@ -70,6 +70,7 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "tests/*" = ["S101"]
+"tests/conftest.py" = ["S101", "E402"]  # env must be set before package imports
 
 [tool.ruff.format]
 quote-style = "double"

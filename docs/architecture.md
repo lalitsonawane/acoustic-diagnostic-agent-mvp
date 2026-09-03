@@ -29,10 +29,12 @@ flowchart TD
     end
     dec --> result["AnalysisResult\n+ timestamped steps"]
     result --> plots["plots (PNG)"]
-    result --> log["run log / exports\nCSV · JSON · NPZ · WAV"]
+    result --> log["session run log + SQLite store\nCSV · JSON · JSONL audit · NPZ · WAV"]
     result --> gate{"CRITICAL and\nconfidence >= 0.6?"}
     gate -->|"Yes"| wo["Mock SAP S/4HANA PM payload\n+ planner approval gate"]
     gate -->|"No"| none["Monitor / re-capture"]
+    wo --> audit["store.audit_events\napprovals + analyses"]
+    log --> hist["History tab\nper-asset trend"]
 ```
 
 ## Event sequence
@@ -54,8 +56,11 @@ sequenceDiagram
     D-->>P: Detection, Validity, Decision
     P-->>S: AnalysisResult with real step timestamps
     S->>S: append run-log row (source, config_hash, feature_version)
+    S->>S: persist same row to SQLite RunStore (+ analysis audit event)
     alt CRITICAL and confidence >= min_confidence
         S-->>O: Banner, evidence chart, work order, approval button
+        O->>S: Approve (simulated)
+        S->>S: append approval to session + audit_events
     else
         S-->>O: Banner, evidence chart, warnings
     end
@@ -100,6 +105,19 @@ score = 100 / (1 + exp(-(z - z_center) / z_scale))       defaults: 3, 1
 
 Every result row and work-order payload carries the configuration hash and the
 `FEATURE_VERSION` string so stored outputs remain comparable after the feature set changes.
+
+## Persistence and deployment
+
+- **`acoustic_agent.store.RunStore`**: SQLite file under `ACOUSTIC_AGENT_DATA_DIR` (default
+  `~/.cache/acoustic_agent/history.sqlite3`). Tables: `runs` (analysis summaries) and
+  `audit_events` (analysis + approval events). The History tab and `acoustic-agent history|audit`
+  read from the same store.
+- **Ephemeral hosts**: Streamlit Community Cloud and Render free disks discard local files on
+  restart. Mount a volume and set `ACOUSTIC_AGENT_DATA_DIR`, or treat CSV/JSONL downloads as the
+  durable record.
+- **Containers**: `Dockerfile` + `scripts/run_server.sh` bind Streamlit to `0.0.0.0:$PORT`;
+  optional `render.yaml` Blueprint with health check `/_stcore/health`. Upload limits remain
+  50 MB / 120 s (`io.MAX_*` and `.streamlit/config.toml`).
 
 ## Quality gates
 

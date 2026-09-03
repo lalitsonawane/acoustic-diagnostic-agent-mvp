@@ -96,6 +96,24 @@ def test_cli_calibrate(capsys):
     assert "config_hash" in payload
 
 
+def test_cli_history_and_audit(capsys, tmp_path: Path):
+    db = tmp_path / "hist.sqlite3"
+    assert main(["analyze", "--synthetic", "--persist", "--db", str(db)]) == 0
+    assert "persisted run id" in capsys.readouterr().err
+    assert main(["history", "--db", str(db), "--json"]) == 0
+    rows = json.loads(capsys.readouterr().out)
+    assert len(rows) == 1 and rows[0]["state"] == "HEALTHY"
+    assert main(["history", "--db", str(db), "--assets"]) == 0
+    assert "Robotic Arm Bearings" in capsys.readouterr().out
+    out = tmp_path / "audit.jsonl"
+    assert main(["audit", "--db", str(db), "--format", "jsonl", "--out", str(out)]) == 0
+    assert out.read_text().strip()
+    capsys.readouterr()  # discard "wrote …" from audit --out
+    assert main(["history", "--db", str(db), "--trend", "Robotic Arm Bearings", "--json"]) == 0
+    trend = json.loads(capsys.readouterr().out)
+    assert len(trend) == 1 and "score" in trend[0]
+
+
 # --- plots --------------------------------------------------------------------------------
 
 

@@ -13,9 +13,7 @@ baseline-calibrated detector, validity gating and batch evaluation from 0.2.0.
 
 ## Live demo
 
-[Open the public Render app](https://acoustic-diagnostic-agent.onrender.com/) (Docker free tier; first request after idle may cold-start).
-
-Alternate: [Streamlit Community Cloud](https://lalitsonawane-acoustic-diagnostic-agent-mvp-app-5t3rdo.streamlit.app/) (may require Streamlit login if not set to Public).
+[Open the deployed Render app](https://acoustic-diagnostic-agent.onrender.com/)
 
 ## What it does
 

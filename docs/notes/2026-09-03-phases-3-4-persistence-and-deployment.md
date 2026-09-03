@@ -48,13 +48,13 @@ tab with per-asset score trends and JSONL/CSV audit export, CLI `history` / `aud
 | **Vercel** | Keep as redirect only | Git check stays green; does not run Streamlit/Docker |
 | **Render / Docker** | Packaged but not activated | Ready if needed later; skip for now to avoid free-tier cold starts |
 
-**Owner manual step (required):** in [Streamlit Community Cloud](https://share.streamlit.io/), open this app → confirm branch `main`, entry file `app.py`, Python **3.12**, then **Reboot** (or wait for the auto-deploy from the merge). Smoke-test Simulate → Generate → History → audit download.
+**Owner manual step:** Streamlit Community Cloud **Reboot done** (2026-09-03, owner confirmed). Expected smoke-test while logged in: Simulate → Generate → History → audit download.
 
-**Verified from agent environment:** Vercel production responds with `307` to the Streamlit URL. Unauthenticated probes of the Streamlit URL returned `303` to Streamlit auth — if the public demo should be open, set the app to **Public** in Streamlit Cloud settings.
+**Verified from agent environment after reboot:** Vercel production still responds with `307` to the Streamlit URL. Unauthenticated probes of the Streamlit URL still return `303` to Streamlit login — the app is reachable but **not anonymously public**. If the demo should open without Streamlit login, set visibility to **Public** in Streamlit Cloud settings.
 
 ## Open follow-ups
 
-- Owner: Streamlit Cloud reboot / public-access check (see above).
+- Optional: set Streamlit Cloud app to **Public** if anonymous demo access is wanted (still gated after reboot).
 - Render left optional; activate only if a second Docker host or persistent disk is wanted.
 - Trend-based *warnings* (alert when score slope crosses a threshold) still open.
 - Real-data loaders (MAFAULDA / CWRU) and learned-detector ROC comparison remain backlog.

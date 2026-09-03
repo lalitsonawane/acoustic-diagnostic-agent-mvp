@@ -101,11 +101,17 @@ uv run acoustic-agent audit --format jsonl --out audit.jsonl
 
 ## Deploy
 
-- **Streamlit Community Cloud** (current live demo): connect the repo, entry point `app.py`,
-  Python 3.12, install from `requirements.txt` (already pinned).
-- **Docker / Render**: `docker build -t acoustic-agent .` then
-  `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`. Optional Blueprint:
-  [`render.yaml`](render.yaml). The process binds `0.0.0.0:$PORT` via
+**Practical default:** Streamlit Community Cloud runs the app; Vercel only redirects; Render/Docker
+is optional packaging left inactive unless you want a second host.
+
+- **Streamlit Community Cloud** (live demo): repo → entry `app.py` → Python **3.12** →
+  `requirements.txt`. After merges to `main`, reboot the app (or rely on auto-deploy) and
+  confirm it is **Public** if the demo should not require Streamlit login.
+- **Vercel**: static redirect to the Streamlit URL (`vercel.json` + `public/`). Do not point
+  Vercel at the Dockerfile for this Streamlit UI.
+- **Docker / Render** (optional): `docker build -t acoustic-agent .` then
+  `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`. Blueprint:
+  [`render.yaml`](render.yaml). Binds `0.0.0.0:$PORT` via
   [`scripts/run_server.sh`](scripts/run_server.sh).
 - **Ephemeral filesystem**: free Streamlit Cloud and Render disks lose local writes on
   restart. SQLite history (`ACOUSTIC_AGENT_DATA_DIR`) is best-effort on those hosts; download

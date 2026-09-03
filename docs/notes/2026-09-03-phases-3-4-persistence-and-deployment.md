@@ -33,17 +33,28 @@ tab with per-asset score trends and JSONL/CSV audit export, CLI `history` / `aud
 
 ## Artifacts / links
 
-- Branch `lalit_cursor/phases-3-4-decision-deploy-b27b` → [PR #4](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/pull/4).
+- Branch `lalit_cursor/phases-3-4-decision-deploy-b27b` → [PR #4](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/pull/4) (**merged** into `main` @ `df57ff2`).
 - Package: `acoustic_agent/store.py`; UI History tab; CLI `history` / `audit`.
 - Deploy: `Dockerfile`, `scripts/run_server.sh`, `render.yaml`, `.dockerignore`.
 - Docs: README Deploy section, `CHANGELOG.md` 0.3.0, architecture / application / student guide.
 - Validation: `uv run ruff check && ruff format --check && mypy && pytest` (all green).
 - Notion: https://app.notion.com/p/3d089f54d2c281fcab56d6e65fa32fd6
 
+## Deploy decision (2026-09-03) — practical choice
+
+| Platform | Decision | Why |
+| --- | --- | --- |
+| **Streamlit Community Cloud** | Primary live host | Already running; least ops; correct runtime for Streamlit |
+| **Vercel** | Keep as redirect only | Git check stays green; does not run Streamlit/Docker |
+| **Render / Docker** | Packaged but not activated | Ready if needed later; skip for now to avoid free-tier cold starts |
+
+**Owner manual step:** Streamlit Community Cloud **Reboot done** (2026-09-03, owner confirmed). Expected smoke-test while logged in: Simulate → Generate → History → audit download.
+
+**Verified from agent environment after reboot:** Vercel production still responds with `307` to the Streamlit URL. Unauthenticated probes of the Streamlit URL still return `303` to Streamlit login — the app is reachable but **not anonymously public**. If the demo should open without Streamlit login, set visibility to **Public** in Streamlit Cloud settings.
+
 ## Open follow-ups
 
-- Redeploy Streamlit Community Cloud from `main` after merge; confirm Python 3.12 + pinned
-  `requirements.txt`.
-- Optional: attach a Render disk and set `ACOUSTIC_AGENT_DATA_DIR` for durable SQLite.
+- Optional: set Streamlit Cloud app to **Public** if anonymous demo access is wanted (still gated after reboot).
+- Render left optional; activate only if a second Docker host or persistent disk is wanted.
 - Trend-based *warnings* (alert when score slope crosses a threshold) still open.
 - Real-data loaders (MAFAULDA / CWRU) and learned-detector ROC comparison remain backlog.

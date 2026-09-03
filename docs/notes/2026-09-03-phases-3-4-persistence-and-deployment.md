@@ -33,10 +33,12 @@ tab with per-asset score trends and JSONL/CSV audit export, CLI `history` / `aud
 
 ## Artifacts / links
 
+- Branch `lalit_cursor/phases-3-4-decision-deploy-b27b` → [PR #4](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/pull/4).
 - Package: `acoustic_agent/store.py`; UI History tab; CLI `history` / `audit`.
 - Deploy: `Dockerfile`, `scripts/run_server.sh`, `render.yaml`, `.dockerignore`.
 - Docs: README Deploy section, `CHANGELOG.md` 0.3.0, architecture / application / student guide.
 - Validation: `uv run ruff check && ruff format --check && mypy && pytest` (all green).
+- Notion: https://app.notion.com/p/3d089f54d2c281fcab56d6e65fa32fd6
 
 ## Open follow-ups
 

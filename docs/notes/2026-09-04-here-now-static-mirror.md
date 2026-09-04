@@ -47,7 +47,7 @@ redirects to the Streamlit app on Render. The Streamlit server itself keeps runn
 
 ## Artifacts / links
 
-- Branch `lalit_cursor/here-now-static-mirror-09d1` → PR on
+- Branch `lalit_cursor/here-now-static-mirror-09d1` → [PR #7](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/pull/7) on
   [github.com/lalitsonawane/acoustic-diagnostic-agent-mvp](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp/pulls).
 - Live: https://flowing-bamboo-pz9j.here.now/ → https://acoustic-diagnostic-agent.onrender.com/
 - Script: `scripts/publish_herenow.sh`; workflow: `.github/workflows/deploy-herenow.yml`.

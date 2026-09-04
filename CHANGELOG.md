@@ -11,7 +11,7 @@ All notable changes to this project are documented here. The format follows
   to a here.now Site (create/update, presigned uploads, finalize; anonymous or with
   `HERENOW_API_KEY`), plus `.github/workflows/deploy-herenow.yml` to republish on `main`
   when the API key secret is configured. Live at https://flowing-bamboo-pz9j.here.now/
-  (anonymous Site; claim it to make it permanent). The Streamlit server stays on Render.
+  (claimed into the owner's account, permanent). The Streamlit server stays on Render.
 
 ## [0.3.0] - 2026-09-03
 

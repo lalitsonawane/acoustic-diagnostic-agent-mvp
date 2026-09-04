@@ -119,11 +119,11 @@ remains an alternate; Vercel and here.now only serve a static page that redirect
   — the same `public/` redirect page published as a static Site with
   [`scripts/publish_herenow.sh`](scripts/publish_herenow.sh) (create/update → upload →
   finalize via the [here.now API](https://here.now/docs)). here.now hosts static files only,
-  so the Streamlit server cannot run there. The current Site was published anonymously and
-  **expires 24 h after publish unless claimed**; to keep a permanent, updatable Site set
-  `HERENOW_API_KEY` (and `HERENOW_SLUG`) and re-run the script, or add both as repository
-  secrets so [`.github/workflows/deploy-herenow.yml`](.github/workflows/deploy-herenow.yml)
-  republishes on every push to `main` that touches `public/`.
+  so the Streamlit server cannot run there. The Site is claimed into the owner's here.now
+  account (permanent). To republish, set `HERENOW_API_KEY` and `HERENOW_SLUG=flowing-bamboo-pz9j`
+  and re-run the script, or add both as repository secrets so
+  [`.github/workflows/deploy-herenow.yml`](.github/workflows/deploy-herenow.yml) republishes
+  on every push to `main` that touches `public/`.
 - **Local Docker**: `docker build -t acoustic-agent .` then
   `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`.
 - **Ephemeral filesystem**: free Streamlit Cloud and Render disks lose local writes on

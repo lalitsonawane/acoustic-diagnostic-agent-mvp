@@ -9,7 +9,7 @@
 | Session date | 2026-09-04 |
 | Last reviewed | 2026-09-04 |
 | Keywords | Cursor, GitHub, Workflow, Architecture |
-| Source / context | Owner request in Cursor cloud agent session 2026-09-04: "This application is already deployed on Render. Additionally deploy it to here.now." Branch `lalit_cursor/here-now-static-mirror-09d1` of [github.com/lalitsonawane/acoustic-diagnostic-agent-mvp](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp). |
+| Source / context | Owner request in Cursor cloud agent session 2026-09-04: "This application is already deployed on Render. Additionally deploy it to here.now." Follow-ups in the same session: "Here.now authentication done and api key obtained", "Site is claimed". Branch `lalit_cursor/here-now-static-mirror-09d1` of [github.com/lalitsonawane/acoustic-diagnostic-agent-mvp](https://github.com/lalitsonawane/acoustic-diagnostic-agent-mvp). |
 
 ## Outcome
 
@@ -20,9 +20,12 @@ redirects to the Streamlit app on Render. The Streamlit server itself keeps runn
 
 - Live Site: https://flowing-bamboo-pz9j.here.now/ (slug `flowing-bamboo-pz9j`), verified
   `HTTP 200` serving the redirect page.
-- Published **anonymously** (no here.now credentials exist in the agent environment), so it
-  **expires 2026-09-05 05:48 UTC** unless claimed. Claim URL was given to the owner in the
-  session summary; it is single-use secret material and is **not** recorded here.
+- Published **anonymously** first (no here.now credentials exist in the agent environment;
+  the anonymous Site would have expired 2026-09-05 05:48 UTC). The claim URL was given to
+  the owner in the session summary (single-use secret material, **not** recorded here).
+  **Owner claimed the Site into their here.now account on 2026-09-04 (~06:07 UTC)**, so it
+  is now permanent. The owner also created a here.now API key; it was not shared with the
+  agent and is not stored in the repo.
 - Repo additions: `scripts/publish_herenow.sh` (self-contained curl + jq implementation of
   the create/update → presigned upload → finalize flow, with `HERENOW_API_KEY`,
   `HERENOW_SLUG`, `HERENOW_CLAIM_TOKEN` and a local `.herenow/state.json`, git-ignored),
@@ -56,11 +59,13 @@ redirects to the Streamlit app on Render. The Streamlit server itself keeps runn
 
 ## Open follow-ups
 
-- **Owner:** open the claim URL from the session summary (or create a here.now API key at
-  https://here.now/dashboard) before 2026-09-05 05:48 UTC, otherwise the anonymous Site
-  expires and the README link goes dead. After claiming, set `HERENOW_API_KEY` and
-  `HERENOW_SLUG=flowing-bamboo-pz9j` as repository secrets so the workflow keeps it fresh.
-- If the Site expires before it is claimed, re-run `scripts/publish_herenow.sh public` with an
-  API key and update the URL in README, CHANGELOG, this note and the Notion mirrors.
+- ~~Owner: claim the Site before 2026-09-05 05:48 UTC.~~ **Done 2026-09-04** (owner confirmed
+  "Site is claimed").
+- **Owner:** add GitHub repository secrets `HERENOW_API_KEY` (the key created today) and
+  `HERENOW_SLUG=flowing-bamboo-pz9j` so `deploy-herenow.yml` republishes `public/` on `main`.
+  Until then the workflow exits early and republishing is manual
+  (`HERENOW_API_KEY=... HERENOW_SLUG=flowing-bamboo-pz9j scripts/publish_herenow.sh public`).
+- Optional: add `HERENOW_API_KEY` as a Cursor Cloud Agent secret so future agent runs can
+  verify the Site record (`GET /api/v1/publish/flowing-bamboo-pz9j`) and republish directly.
 - Earlier follow-ups (rotate Render API key, optional Render disk, Streamlit Cloud Public
   setting, trend warnings, real-data loaders) remain open in the 2026-09-03 note.

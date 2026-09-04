@@ -19,3 +19,6 @@ htmlcov/
 *.sqlite3
 tests/.tmp_acoustic_agent_data/
 
+# here.now publish state (slug + claim token) written by scripts/publish_herenow.sh
+.herenow/
+

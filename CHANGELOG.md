@@ -4,6 +4,15 @@ All notable changes to this project are documented here. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project uses
 [Semantic Versioning](https://semver.org/).
 
+## [Unreleased]
+
+### Added
+- here.now static mirror: `scripts/publish_herenow.sh` publishes the `public/` redirect page
+  to a here.now Site (create/update, presigned uploads, finalize; anonymous or with
+  `HERENOW_API_KEY`), plus `.github/workflows/deploy-herenow.yml` to republish on `main`
+  when the API key secret is configured. Live at https://flowing-bamboo-pz9j.here.now/
+  (claimed into the owner's account, permanent). The Streamlit server stays on Render.
+
 ## [0.3.0] - 2026-09-03
 
 Phase 3 remainder (decision integrity / persistence) and Phase 4 (deployment hardening).

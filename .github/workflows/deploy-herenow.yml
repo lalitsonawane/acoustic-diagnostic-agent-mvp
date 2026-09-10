@@ -1,0 +1,38 @@
+name: Deploy here.now
+
+# Republishes the static redirect site (public/) to here.now whenever it or the
+# publish script changes on main. Skipped unless the repository secret
+# HERENOW_API_KEY is set (anonymous Sites expire after 24 h and a fresh slug
+# would be minted on every run, which is useless for a stable link).
+#
+# Secrets: HERENOW_API_KEY (personal key, hnk_...), HERENOW_SLUG (Site slug to update).
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "public/**"
+      - "scripts/publish_herenow.sh"
+      - ".github/workflows/deploy-herenow.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-herenow
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    env:
+      HERENOW_API_KEY: ${{ secrets.HERENOW_API_KEY }}
+      HERENOW_SLUG: ${{ secrets.HERENOW_SLUG }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish public/ to here.now
+        run: |
+          if [ -z "${HERENOW_API_KEY}" ]; then
+            echo "HERENOW_API_KEY secret not set; skipping here.now publish." >&2
+            exit 0
+          fi
+          scripts/publish_herenow.sh public

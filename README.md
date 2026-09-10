@@ -91,6 +91,7 @@ uv run acoustic-agent audit --format jsonl --out audit.jsonl
 | [`pyproject.toml`](pyproject.toml) / [`uv.lock`](uv.lock) / [`requirements.txt`](requirements.txt) | Project metadata, lockfile, pinned runtime dependencies for Streamlit Cloud |
 | [`.streamlit/config.toml`](.streamlit/config.toml) | Theme and server settings |
 | [`.github/workflows/ci.yml`](.github/workflows/ci.yml) | Lint, type-check, tests, sample-set reproducibility |
+| [`scripts/publish_herenow.sh`](scripts/publish_herenow.sh) / [`.github/workflows/deploy-herenow.yml`](.github/workflows/deploy-herenow.yml) | Publish the `public/` redirect page to here.now (manual or on push to `main`) |
 | [`docs/application.md`](docs/application.md) | Single reference for workflow, code structure, method and study path |
 | [`docs/architecture.md`](docs/architecture.md) | System design and Mermaid workflow diagrams |
 | [`docs/engineering-student-guide.md`](docs/engineering-student-guide.md) | Learning path, signal-processing notes, exercises, and extension ideas |
@@ -102,7 +103,7 @@ uv run acoustic-agent audit --format jsonl --out audit.jsonl
 ## Deploy
 
 **Live hosts:** Render (public Docker free tier) is the anonymous demo; Streamlit Community Cloud
-remains an alternate; Vercel only redirects to Render.
+remains an alternate; Vercel and here.now only serve a static page that redirects to Render.
 
 - **Render** (primary public demo): [https://acoustic-diagnostic-agent.onrender.com](https://acoustic-diagnostic-agent.onrender.com/)
   — Docker web service from [`Dockerfile`](Dockerfile) / [`render.yaml`](render.yaml), binds
@@ -114,6 +115,15 @@ remains an alternate; Vercel only redirects to Render.
   `requirements.txt`. Set visibility to **Public** if the demo should not require Streamlit login.
 - **Vercel**: static redirect to the Render URL (`vercel.json` + `public/`). Do not point
   Vercel at the Dockerfile for this Streamlit UI.
+- **here.now**: [https://flowing-bamboo-pz9j.here.now](https://flowing-bamboo-pz9j.here.now/)
+  — the same `public/` redirect page published as a static Site with
+  [`scripts/publish_herenow.sh`](scripts/publish_herenow.sh) (create/update → upload →
+  finalize via the [here.now API](https://here.now/docs)). here.now hosts static files only,
+  so the Streamlit server cannot run there. The Site is claimed into the owner's here.now
+  account (permanent). To republish, set `HERENOW_API_KEY` and `HERENOW_SLUG=flowing-bamboo-pz9j`
+  and re-run the script, or add both as repository secrets so
+  [`.github/workflows/deploy-herenow.yml`](.github/workflows/deploy-herenow.yml) republishes
+  on every push to `main` that touches `public/`.
 - **Local Docker**: `docker build -t acoustic-agent .` then
   `docker run --rm -p 8501:8501 -e PORT=8501 acoustic-agent`.
 - **Ephemeral filesystem**: free Streamlit Cloud and Render disks lose local writes on

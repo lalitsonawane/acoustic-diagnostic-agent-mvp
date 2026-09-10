@@ -18,3 +18,4 @@ tests/.tmp_acoustic_agent_data
 .DS_Store
 uv.lock
 .devcontainer
+.herenow
